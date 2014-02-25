@@ -1,5 +1,5 @@
-Standard functions library for bash shell
-=========================================
+Standard functions library for bash
+===================================
 
 Even though no POSIX-compatible shell is likely to win any performance awards,
 the capabilities of modern shells - especailly `bash-4` and above - now allow
@@ -10,12 +10,12 @@ standard functions, many scripts either lack even the most basic of error-
 handling techniques, or spend much time re-implmenting boiler-plate code.  This
 library is intended to live in `/usr/local/lib`, and either be included in any
 scripts which wish to make use of the standardised functions - or even sourced
-from ~/.bashrc in order to speed individual script execution.
+from `~/.bashrc` in order to speed individual script execution.
 
 Orientation
 ===========
 
-stdlib.sh requires at least `bash-2.02` (for `[[ ... ]]` in-process conditional
+`stdlib.sh` requires at least `bash-2.02` (for `[[ ... ]]` in-process conditional
 evaluation), and several functions use the `=~` regular-expression match
 operator introduced in `bash-3`.  If `bash-4` features such as associative
 arrays are available, then the environment variable `STDLIB_HAVE_BASH_4` is set
@@ -25,7 +25,7 @@ Coding Standards
 ================
 
 All scripts should, following the interpreter line at the very top of the file,
-include the stdlib.sh loader code from the top of `/usr/local/lib/stdlib.sh`.
+include the `stdlib.sh` loader code from the top of `/usr/local/lib/stdlib.sh`.
 stdlib will only execute itself if its functions aren't already initialised.
 On load, `stdlib.sh` invokes `set -u` which causes bash to abort execution if
 a run-time attempt is made to address an unbound variable.  Because of this,
@@ -87,32 +87,32 @@ $DEBUG_RM "${files[@]}"
 Functions
 =========
 
-| Function              | Description                                                                  |
-|-----------------------|------------------------------------------------------------------------------|
-| output()              | An alias for `echo`, used to indicate user-visible output                    |
-| respond()             | An alias for `echo`, used to indicate response feedback                      |
-| std::cleanup()        | Remove any temporary files created by the mktemp functions or garbagecollect |
-| std::usage-message()  | Provide custom help-text where `${std_USAGE}` is not sufficient              |
-| std::usage()          | Output help text from `${std_USAGE}` or std::usage-message()                 |
-| std::log()            | Output text to console, file, or syslog                                      |
-| die()                 | Output text in a standard format and exit with a failure code                |
-| error()               | Output text in a standard format                                             |
-| warn()                | Output text in a standard format                                             |
-| note()                | Output text in a standard format                                             |
-| notice()              | Output text in a standard format                                             |
-| info()                | Output text in a standard format                                             |
-| debug()               | Output text in a standard format                                             |
-| symerror()            | errno: Provide symbol name (such as `EERROR`) for specified code             |
-| errsymbol()           | errno: Provide code for specified symbol                                     |
-| strerror()            | errno: Provide description string for most recent or specified code          |
-| std::garbagecollect() | Add additional files for automatic removal on exit                           |
-| std::mktemp()         | OS-neutral standard mktemp(1) replacement, with garbage collection           |
-| std::emktemp()        | Enhanced mktemp(1) replacemnt with improved syntax                           |
-| std::push()           | Push() implementation - see [here](https://github.com/vaeth/push)            |
-| std::readlink()       | Basic OS-neutral readlink(1) stand-in                                        |
-| std::formatlist()     | Return an English list with Oxford comma                                     |
-| std::requires()       | Declare script command requirements/dependencies                             |
-| std::capture()        | Capture the output- or error- stream of a command                            |
-| std::ensure()         | Exit with a specified error message if a command fails                       |
-| std::silence()        | Execute a command and drop all output (e.g. `>/dev/null 2>&1`)               |
+| Function                | Description                                                                                    |
+|-------------------------|------------------------------------------------------------------------------------------------|
+| `output()`              | An alias for `echo`, used to indicate user-visible output                                      |
+| `respond()`             | An alias for `echo`, used to indicate response feedback                                        |
+| `std::cleanup()`        | Remove any temporary files created by the `mktemp` functions or added by `std::garbagecollect` |
+| `std::usage-message()`  | Provide custom help-text where `${std_USAGE}` is not sufficient                                |
+| `std::usage()`          | Output help text from `${std_USAGE}` or std::usage-message()                                   |
+| `std::log()`            | Output text to console, file, or syslog                                                        |
+| `die()`                 | Output text in a standard format and exit with a failure code                                  |
+| `error()`               | Output text in a standard format                                                               |
+| `warn()`                | Output text in a standard format                                                               |
+| `note()`                | Output text in a standard format                                                               |
+| `notice()`              | Output text in a standard format                                                               |
+| `info()`                | Output text in a standard format                                                               |
+| `debug()`               | Output text in a standard format                                                               |
+| `symerror()`            | errno: Provide symbol name (such as '`EERROR`') for specified code                             |
+| `errsymbol()`           | errno: Provide code for specified symbol                                                       |
+| `strerror()`            | errno: Provide description string for most recent or specified code                            |
+| `std::garbagecollect()` | Add additional files for automatic removal on exit                                             |
+| `std::mktemp()`         | OS-neutral standard `mktemp(1)` replacement, with garbage collection                           |
+| `std::emktemp()`        | Enhanced `mktemp(1)` replacemnt with improved syntax                                           |
+| `std::push()`           | `Push()` implementation - see Martin Väth's original [here](https://github.com/vaeth/push)     |
+| `std::readlink()`       | Basic OS-neutral `readlink(1)` stand-in                                                        |
+| `std::formatlist()`     | Return an English-formatted list with Oxford comma                                             |
+| `std::requires()`       | Declare script command requirements/dependencies                                               |
+| `std::capture()`        | Capture the output- or error- stream of a command                                              |
+| `std::ensure()`         | Exit with a specified error message if a command fails                                         |
+| `std::silence()`        | Execute a command and drop all output (e.g. `>/dev/null 2>&1`)                                 |
 
