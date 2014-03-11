@@ -21,7 +21,9 @@ for std_LIBPATH in \
 	"." \
 	"$( dirname "$( type -pf "${std_LIB}" 2>/dev/null )" )" \
 	"$( readlink -e "$( dirname -- "${0:-.}" )/../lib" )" \
-	"/usr/local/lib"
+	"/usr/local/lib" \
+	 ${FPATH:+${FPATH//:/ }} \
+	 ${PATH:+${PATH//:/ }}
 do
 	if [[ -r "${std_LIBPATH}/${std_LIB}" ]]; then
 		break
@@ -139,97 +141,6 @@ function respond() {
 
 ###############################################################################
 #
-# stdlib.sh - Setup and API mapping
-#
-###############################################################################
-
-declare -i __STDLIB_API="${STDLIB_API:-1}"
-case "${__STDLIB_API}" in
-	1)
-		:
-		;;
-	*)
-		# Don't use die(), which is not yet defined...
-		#
-		output >&2 "API ${__STDLIB_API} not supported"
-		exit 1
-		;;
-esac
-export __STDLIB_API
-
-# Following the same logic as suggested at the top of stdlib.sh, locate this
-# script to allow for introspection.
-# N.B.: Search order is reversed, with a specified path tried first.
-#
-# stdlib.sh should be in /usr/local/lib/stdlib.sh, which can be found as
-# follows by scripts located in /usr/local/{,s}bin/...
-#
-std_LIB="${std_LIB:-stdlib.sh}"
-for std_LIBPATH in \
-	"${std_LIBPATH:-}" \
-	"/usr/local/lib" \
-	"$( readlink -e "$( dirname -- "${0:-.}" )/../lib" )" \
-	"$( dirname "$( type -pf "${std_LIB}" 2>/dev/null )" )" \
-	"."
-do
-	[[ -n "${std_LIBPATH:-}" ]] || continue
-
-	if [[ -r "${std_LIBPATH}/${std_LIB}" ]]; then
-		break
-	fi
-done
-if [[ -r "${std_LIBPATH}/${std_LIB}" ]]; then
-	if (( ${std_DEBUG:-0} )) \
-		&& [[ "${std_LIBPATH=}" != "/usr/local/lib" ]]; then
-		output >&2 "WARN:   ${std_LIB} Internal: Including ${std_LIB}"
-			"from non-standard path '${std_LIBPATH}'"
-	fi
-else
-	output >&2 "FATAL:  Cannot locate ${std_LIB} library functions"
-	exit 1
-fi
-export std_LIBPATH std_LIB
-
-# Create interface for functions of the appropriate API...
-#
-# N.B.: Avoid pipes to maintain scope of new definitions.
-#
-declare -a __STDLIB_functionlist
-while read fapi; do
-	#if grep -q "^__STDLIB_API_${__STDLIB_API}_" <<<"${fapi}"; then
-	if echo "${fapi}" | grep -q "^__STDLIB_API_${__STDLIB_API}_"; then
-		fname="$( sed 's/^__STDLIB_API_[0-9]\+_//' <<<"${fapi}" )" \
-		&& __STDLIB_functionlist=(
-			${__STDLIB_functionlist[@]:-}
-			"$fname"
-		) && eval "function ${fname}() { ${fapi} \"\${@:-}\"; }"
-		unset fname
-	fi
-
-	# Here's a strange thing... 'grep' in CentOS 5.8 (and likely others)
-	# doesn't like '\s', so this needs to be swapped for the longer and
-	# less readable '[[:space:]]' in the code below...
-	#
-	#  grep '^[[:space:]]*function[[:space:]]\+[a-zA-Z_]\+[a-zA-Z0-9_-]*[[:space:]]*()[[:space:]]*{\?[[:space:]]*$'
-	#
-	# ... or, experiments show, \W ([^[:alnum:]]) seems to be an
-	# acceptable alternative (as would '[ ${std_TAB}]' be)!
-	#
-	# N.B.: Moved comment above code below due to syntax-highlighter
-	# breakage.
-done < <(
-	  grep "function" "${std_LIBPATH:-.}/${std_LIB}" \
-	| sed 's/#.*$//' \
-	| grep '^\W*function\W\+[a-zA-Z_]\+[a-zA-Z0-9_:\-]*\W*()\W*{\?\W*$' \
-	| sed -r 's/^\s*function\s+([a-zA-Z_]+[a-zA-Z0-9_:\-]*)\s*\(\)\s*\{?\s*$/\1/'
-)
-unset fapi
-# Need ability to serialise arrays...
-#export __STDLIB_functionlist
-
-
-###############################################################################
-#
 # stdlib.sh - Standard functions and variables
 #
 ###############################################################################
@@ -239,7 +150,7 @@ unalias ls >/dev/null 2>&1
 unalias mv >/dev/null 2>&1
 unalias rm >/dev/null 2>&1
 
-export std_PREFIX="/usr/local"
+export std_PREFIX="${std_PREFIX:-/usr/local}"
 export std_BINPATH="${std_PREFIX}/bin"
 # N.B.: Earlier auto-discovered value for std_LIBPATH is replaced here:
 export std_LIBPATH="${std_PREFIX}/lib"
@@ -307,7 +218,7 @@ function __STDLIB_oneshot_get_bash_version() {
 	fi
 
 	if [[ -n "${bash}" ]]; then
-		bash="$( readlink -e "$( type -pf "${bash:-bash}" )" )"
+		bash="$( readlink -e "$( type -pf "${bash:-bash}" 2>/dev/null )" )"
 		if [[ -n "$bash" && -x "$bash" ]]; then
 			version="$( "$bash" --version 2>&1 | head -n 1 )" \
 				|| die "Cannot determine version for" \
@@ -449,6 +360,27 @@ function __STDLIB_API_1_std::usage() {
 #
 ###############################################################################
 
+function __STDLIB_API_1_std::wrap() {
+	local prefix="${1:-}" ; shift
+	local text="${@:-}"
+
+	[[ -n "${text}" ]] || return 1
+
+	# N.B.: It may be necessary to 'export COLUMNS' before this
+	#       works - this variable isn't exported to scripts by
+	#       default, and is lost on invocation.
+	if [[ -n "${prefix:-}" ]]; then
+		  output "${text}" \
+		| fold -sw "$(( ${COLUMNS:-80} - ( ${#prefix} + 1 )))" \
+		| sed "s/^/${prefix} /"
+	else
+		  output "${text}" \
+		| fold -sw "$(( ${COLUMNS:-80} - 1))"
+	fi
+
+	return 0
+} # __STDLIB_API_1_std::wrap
+
 function __STDLIB_API_1_std::log() {
 	local prefix="${1:-${std_LIB}}" ; shift
 	local data="${@:-}" message
@@ -481,12 +413,7 @@ function __STDLIB_API_1_std::log() {
 		&& output "${message}" >>"${std_LOGFILE}" 2>&1
 
 	if (( std_DEBUG )); then
-		# N.B.: It may be necessary to 'export COLUMNS' before this
-		#       works - this variable isn't exported to scripts by
-		#       default, and is lost on invocation.
-		output "${data}" | fold -sw "$((
-			${COLUMNS:-80} - ( ${#prefix} + 1 )
-		))" | sed "s/^/${prefix} /"
+		std::wrap "${prefix}" "${data}"
 	fi
 
 	return $(( ! std_DEBUG ))
@@ -1005,14 +932,16 @@ function __STDLIB_API_1_std::requires() {
 	local item
 	local -i rc=0
 
-	(( ${#files[@]} )) || return 1
+	[[ -n "${files}" ]] || return 1
 
-	for item in "${files[@]}"; do
-		type -pf "${item}" || {
+	for item in ${files}; do
+		type -pf "${item}" >/dev/null 2>&1 || {
 			error "Cannot locate required '${item}' binary"
 			rc=1
 		}
 	done
+
+	(( rc )) && exit 1
 
 	return ${rc}
 } # __STDLIB_API_1_std::requires
@@ -1218,7 +1147,7 @@ function __STDLIB_API_1_std::silence() {
 
 ###############################################################################
 #
-# stdlib.sh - Final setup and configuration
+# stdlib.sh - Final setup and API mapping
 #
 ###############################################################################
 
@@ -1230,6 +1159,126 @@ if [[ -n "${STDLIB_WANT_ERRNO:-}" ]] && (( !( STDLIB_HAVE_ERRNO ) )); then
 	__STDLIB_oneshot_errno_init
 	unset __STDLIB_oneshot_errno_init
 fi
+
+declare -i __STDLIB_API="${STDLIB_API:-1}"
+case "${__STDLIB_API}" in
+	1)
+		:
+		;;
+	*)
+		# Don't use die(), which is not yet defined...
+		#
+		output >&2 "API ${__STDLIB_API} not supported"
+		exit 1
+		;;
+esac
+export __STDLIB_API
+
+# Following the same logic as suggested at the top of stdlib.sh, locate this
+# script to allow for introspection.
+# N.B.: Search order is (broadly) reversed, with a specified path tried first.
+#
+# stdlib.sh should be in /usr/local/lib/stdlib.sh, which can be found as
+# follows by scripts located in /usr/local/{,s}bin/...
+#
+std_LIB="${std_LIB:-stdlib.sh}"
+for std_LIBPATH in \
+	 ${std_LIBPATH:-} \
+	"/usr/local/lib" \
+	"$( readlink -e "$( dirname -- "${0:-.}" )/../lib" )" \
+	"$( dirname "$( type -pf "${std_LIB}" 2>/dev/null )" )" \
+	"." \
+	 ${FPATH:+${FPATH//:/ }} \
+	 ${PATH:+${PATH//:/ }}
+do
+	[[ -n "${std_LIBPATH:-}" ]] || continue
+
+	if [[ -r "${std_LIBPATH}/${std_LIB}" ]]; then
+		break
+	fi
+done
+if [[ -r "${std_LIBPATH}/${std_LIB}" ]]; then
+	if (( ${std_DEBUG:-0} )) \
+		&& [[ "${std_LIBPATH=}" != "/usr/local/lib" ]]; then
+		output >&2 "WARN:   ${std_LIB} Internal: Including ${std_LIB}"
+			"from non-standard path '${std_LIBPATH}'"
+	fi
+else
+	output >&2 "FATAL:  Cannot locate ${std_LIB} library functions"
+	exit 1
+fi
+export std_LIBPATH std_LIB
+
+# Create interface for functions of the appropriate API...
+#
+# N.B.: Avoid pipes to maintain scope of new definitions.
+#
+declare -a __STDLIB_functionlist
+while read fapi; do
+
+	# Export all API versions, so that explicit implmentations are still
+	# available...
+	#
+	#if grep -q "^__STDLIB_API_" <<<"${fapi}"; then
+	if echo "${fapi}" | grep -q "^__STDLIB_API_"; then
+
+		# Ensure that function is still available...
+		#
+		if [[ "function" == "$( type -t "${fapi}" 2>/dev/null )" ]]; then
+
+			# Make functions available to child shells...
+			#
+			export -f "${fapi}"
+
+			if echo "${fapi}" | grep -q "^__STDLIB_API_${__STDLIB_API}_"; then
+				if fname="$( sed 's/^__STDLIB_API_[0-9]\+_//' <<<"${fapi}" )"; then
+					__STDLIB_functionlist=( ${__STDLIB_functionlist[@]:-} "$fname" )
+					eval "function ${fname}() { ${fapi} \"\${@:-}\"; }"
+
+					# Make functions available to child shells...
+					#
+					export -f "${fname}"
+
+					# Clear the variable, not the function definition...
+					#
+					unset fname
+				fi
+			fi
+		fi
+	fi
+
+	#
+	# Here's a strange thing... 'grep' in CentOS 5.8 (and likely others)
+	# doesn't like '\s', so this needs to be swapped for the longer and
+	# less readable '[[:space:]]' in the code below...
+	#
+	#  grep '^[[:space:]]*function[[:space:]]\+[a-zA-Z_]\+[a-zA-Z0-9_-]*[[:space:]]*()[[:space:]]*{\?[[:space:]]*$'
+	#
+	# ... or, experiments show, \W ([^[:alnum:]]) seems to be an
+	# acceptable alternative (as would '[ ${std_TAB}]' be)!
+	#
+	# N.B.: Moved comment above code below due to syntax-highlighter
+	# breakage.
+	#
+	#| grep '^\W*function\W\+[a-zA-Z_]\+[a-zA-Z0-9_:\-]*\W*()\W*{\?\W*$' \
+	#
+	# Update: Reverted to 'grep -E' from the above
+	#
+
+done < <(
+	  grep "function" "${std_LIBPATH:-.}/${std_LIB}" \
+	| sed 's/#.*$//' \
+	| grep -E '^\s*function\s+[a-zA-Z_]+[a-zA-Z0-9_:\-]*\s*\(\)\s*\{?\s*$' \
+	| sed -r 's/^\s*function\s+([a-zA-Z_]+[a-zA-Z0-9_:\-]*)\s*\(\)\s*\{?\s*$/\1/'
+)
+unset fapi
+
+# Also export non-API-versioned functions...
+#
+export -f output respond
+
+# Need ability to serialise arrays...
+#export __STDLIB_functionlist
 
 export STDLIB_HAVE_STDLIB=1
 
