@@ -1209,6 +1209,12 @@ else
 fi
 export std_LIBPATH std_LIB
 
+# Red Hat/CentOS 5.x ship with a version of grep which can't parse '\s', and
+# so '[[:space:]]' has to be used instead.  We can work around this as follows,
+# but it does negatively impact processing speed:
+declare s='\s'
+echo " " | eval "grep -qE '${s}'" || s='[[:space:]]'
+
 # Create interface for functions of the appropriate API...
 #
 # N.B.: Avoid pipes to maintain scope of new definitions.
@@ -1268,10 +1274,10 @@ while read fapi; do
 done < <(
 	  grep "function" "${std_LIBPATH:-.}/${std_LIB}" \
 	| sed 's/#.*$//' \
-	| grep -E '^\s*function\s+[a-zA-Z_]+[a-zA-Z0-9_:\-]*\s*\(\)\s*\{?\s*$' \
+	| eval "grep -E '^$s*function$s+[a-zA-Z_]+[a-zA-Z0-9_:\-]*$s*\(\)$s*\{?$s*$'" \
 	| sed -r 's/^\s*function\s+([a-zA-Z_]+[a-zA-Z0-9_:\-]*)\s*\(\)\s*\{?\s*$/\1/'
 )
-unset fapi
+unset fapi s
 
 # Also export non-API-versioned functions...
 #
