@@ -20,7 +20,7 @@ std_LIB="stdlib.sh"
 for std_LIBPATH in \
 	"." \
 	"$( dirname "$( type -pf "${std_LIB}" 2>/dev/null )" )" \
-	"$( readlink -e "$( dirname -- "${0:-.}" )/../lib" )" \
+	"$( readlink -e "$( dirname -- "${BASH_SOURCE:-${0:-.}}" )/../lib" )" \
 	"/usr/local/lib" \
 	 ${FPATH:+${FPATH//:/ }} \
 	 ${PATH:+${PATH//:/ }}
@@ -155,7 +155,9 @@ export std_BINPATH="${std_PREFIX}/bin"
 # N.B.: Earlier auto-discovered value for std_LIBPATH is replaced here:
 export std_LIBPATH="${std_PREFIX}/lib"
 
-export NAME="$( basename "${0:-${std_LIB}}" )"
+# ${0} may equal '-bash' if invoked directly, in which case basename fails as
+# it tries to interpret '-b ash'.
+export NAME="$( basename -- "${BASH_SOURCE:-${0:-${std_LIB}}}" )"
 
 # Ensure a sane sorting order...
 export LC_ALL="C"
@@ -190,18 +192,18 @@ declare -a __STDLIB_OWNED_FILES
 #       in this case the ultimate parent does impose the interpreter.
 #
 function __STDLIB_oneshot_get_bash_version() {
-	local parent="${0:-}"
+	local parent="${BASH_SOURCE:-${0:-}}"
 	local int bash version
 
-	if [[ -z "${parent}" || "${parent}" == "bash" ]]; then
+	if [[ -z "${parent:-}" || "${parent}" == "bash" ]]; then
 		# If stdlib.sh is sourced directly, $0 will be 'bash' (or
 		# another shell name, which should be listed in /etc/shells)
 		#
 		bash="bash"
 
-	elif [[ -n "${0}" && -r "${0}" ]]; then
+	elif [[ -r "${parent}" ]]; then
 		# Assume the our interpreter is some bash variant...
-		int="$( head -n 1 "${0}" )"
+		int="$( head -n 1 "${parent}" )"
 		int="$( sed 's|^#\! \?||' <<<"${int}" )"
 		if [[ \
 			"${int:0:4}" == "env " || \
@@ -217,9 +219,9 @@ function __STDLIB_oneshot_get_bash_version() {
 		warn "Unknown interpretor"
 	fi
 
-	if [[ -n "${bash}" ]]; then
+	if [[ -n "${bash:-}" ]]; then
 		bash="$( readlink -e "$( type -pf "${bash:-bash}" 2>/dev/null )" )"
-		if [[ -n "$bash" && -x "$bash" ]]; then
+		if [[ -n "$bash:-" && -x "$bash" ]]; then
 			version="$( "$bash" --version 2>&1 | head -n 1 )" \
 				|| die "Cannot determine version for" \
 					"interpreter '$bash'"
@@ -285,10 +287,10 @@ function __STDLIB_API_1_std::cleanup() {
 	unset file
 
 	trap - EXIT INT QUIT TERM
-	[[ -n "${__STDLIB_SIGEXIT}" ]] && trap ${__STDLIB_SIGEXIT} EXIT
-	[[ -n "${__STDLIB_SIGINT}" ]] && trap ${__STDLIB_SIGINT} INT
-	[[ -n "${__STDLIB_SIGQUIT}" ]] && trap ${__STDLIB_SIGQUIT} QUIT
-	[[ -n "${__STDLIB_SIGTERM}" ]] && trap ${__STDLIB_SIGTERM} TERM
+	[[ -n "${__STDLIB_SIGEXIT:-}" ]] && trap ${__STDLIB_SIGEXIT} EXIT
+	[[ -n "${__STDLIB_SIGINT:-}" ]] && trap ${__STDLIB_SIGINT} INT
+	[[ -n "${__STDLIB_SIGQUIT:-}" ]] && trap ${__STDLIB_SIGQUIT} QUIT
+	[[ -n "${__STDLIB_SIGTERM:-}" ]] && trap ${__STDLIB_SIGTERM} TERM
 
 	exit ${rc}
 } # __STDLIB_API_1_std::cleanup
@@ -364,7 +366,7 @@ function __STDLIB_API_1_std::wrap() {
 	local prefix="${1:-}" ; shift
 	local text="${@:-}"
 
-	[[ -n "${text}" ]] || return 1
+	[[ -n "${text:-}" ]] || return 1
 
 	# N.B.: It may be necessary to 'export COLUMNS' before this
 	#       works - this variable isn't exported to scripts by
@@ -560,7 +562,7 @@ function __STDLIB_API_1_strerror() {
 		return 1
 	}
 
-	if [[ -z "${err}" ]]; then
+	if [[ -z "${err:-}" ]]; then
 		:
 	#elif ! grep -q '^[0-9]\+$' <<<"${err}"; then
 	elif ! echo "${err}" | grep -q '^[0-9]\+$'; then
@@ -873,7 +875,7 @@ echo "Debug: std_push_var='${std_push_var}', value=|$( eval echo \"\${${std_push
 function __STDLIB_API_1_std::readlink() {
 	local file="${1:-}" ; shift
 
-	[[ -n "${file}" ]] || return 1
+	[[ -n "${file:-}" ]] || return 1
 
 	# Find the target of a symlink, in circumstances where GNU readlink is
 	# not available
@@ -901,7 +903,7 @@ function __STDLIB_API_1_std::formatlist() {
 
 	if [[ -n "${3:-}" ]]; then
 		item="${1:-}"
-		echo "${item}, $( ${FUNCNAME} "${@:-}" )"
+		echo "${item:-}, $( ${FUNCNAME} "${@:-}" )"
 	elif [[ -n "${2:-}" ]]; then
 		item="$(
 			for item in "${FUNCNAME[@]}"; do
@@ -932,7 +934,7 @@ function __STDLIB_API_1_std::requires() {
 	local item
 	local -i rc=0
 
-	[[ -n "${files}" ]] || return 1
+	[[ -n "${files:-}" ]] || return 1
 
 	for item in ${files}; do
 		type -pf "${item}" >/dev/null 2>&1 || {
@@ -1011,7 +1013,7 @@ function __STDLIB_API_1_std::ensure() {
 	response="$( std::capture stderr "${cmd}" ${arg:-} )" ; rc=${?}
 	if (( !( rc ) )); then
 		# Succeeded
-		[[ -z "${err}" ]] && output "${response:-}"
+		[[ -z "${err:-}" ]] && output "${response:-}"
 
 		return ${rc}
 	else
@@ -1185,7 +1187,7 @@ std_LIB="${std_LIB:-stdlib.sh}"
 for std_LIBPATH in \
 	 ${std_LIBPATH:-} \
 	"/usr/local/lib" \
-	"$( readlink -e "$( dirname -- "${0:-.}" )/../lib" )" \
+	"$( readlink -e "$( dirname -- "${BASH_SOURCE:-${0:-.}}" )/../lib" )" \
 	"$( dirname "$( type -pf "${std_LIB}" 2>/dev/null )" )" \
 	"." \
 	 ${FPATH:+${FPATH//:/ }} \
