@@ -94,6 +94,7 @@ Functions
 | `std::cleanup()`        | Remove any temporary files created by the `mktemp` functions or added by `std::garbagecollect` |
 | `std::usage-message()`  | Provide custom help-text where `${std_USAGE}` is not sufficient                                |
 | `std::usage()`          | Output help text from `${std_USAGE}` or std::usage-message()                                   |
+| `std::wrap()`           | Format text to wrap to the width of the console at a word-end - N.B. Requires 'export COLUMNS' |
 | `std::log()`            | Output text to console, file, or syslog                                                        |
 | `die()`                 | Output text in a standard format and exit with a failure code                                  |
 | `error()`               | Output text in a standard format                                                               |
@@ -111,8 +112,10 @@ Functions
 | `std::push()`           | `Push()` implementation - see Martin Väth's original [here](https://github.com/vaeth/push)     |
 | `std::readlink()`       | Basic OS-neutral `readlink(1)` stand-in                                                        |
 | `std::formatlist()`     | Return an English-formatted list with Oxford comma                                             |
+| `std::vcmp()`           | Compare two specified versions, or output a list of versions and succeed if the list was sorted|
 | `std::requires()`       | Declare script command requirements/dependencies                                               |
 | `std::capture()`        | Capture the output- or error- stream of a command                                              |
 | `std::ensure()`         | Exit with a specified error message if a command fails                                         |
 | `std::silence()`        | Execute a command and drop all output (e.g. `>/dev/null 2>&1`)                                 |
+| `std::parseargs()`      | Allow functions to accept named parameters with only minor code-changes                        |
 

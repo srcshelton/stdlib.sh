@@ -37,6 +37,12 @@ done
 EOC
 
 
+# What API version are we exporting?
+export  std_RELEASE="1.4" # Add std::parseargs
+#export std_RELEASE="1.3" # Initial import
+readonly std_RELEASE
+
+
 declare std_DEBUG
 # Standard usage is:
 #
@@ -91,7 +97,7 @@ EOC
 # Exported control-variables:
 #
 # STDLIB_HAVE_STDLIB	- Set once stdlib functions have been loaded;
-# STDLIB_HAVE_BASH_4	- Set if interpretor is bash-4 or above;
+# STDLIB_HAVE_BASH_4	- Set if interpreter is bash-4 or above;
 # STDLIB_HAVE_ERRNO	- Set if errno functions have been initialised;
 # STDLIB_HAVE_MEMCACHED	- Set if bash memcached interace is available.
 #
@@ -115,6 +121,10 @@ EOC
 # Gentleman, start your debuggers ;)
 #
 set -u
+
+# Try to impose sane handling of the '!' character...
+#
+set +o histexpand
 
 # Use 'output' rather than 'echo' to clearly differentiate user-visible
 # output from pipeline-intermediate commands.
@@ -157,7 +167,7 @@ export std_LIBPATH="${std_PREFIX}/lib"
 
 # ${0} may equal '-bash' if invoked directly, in which case basename fails as
 # it tries to interpret '-b ash'.
-export NAME="$( basename -- "${BASH_SOURCE:-${0:-${std_LIB}}}" )"
+export NAME="$( basename -- "${0:-${std_LIB}}" )"
 
 # Ensure a sane sorting order...
 export LC_ALL="C"
@@ -192,17 +202,25 @@ declare -a __STDLIB_OWNED_FILES
 #       in this case the ultimate parent does impose the interpreter.
 #
 function __STDLIB_oneshot_get_bash_version() {
-	local parent="${BASH_SOURCE:-${0:-}}"
-	local int bash version
+	local parent="${0:-}"
+	local int shell version
 
-	if [[ -z "${parent:-}" || "${parent}" == "bash" ]]; then
+	# Please note - this function may have unintended consequences if
+	# invoked from a script which has an interpreter which causes a
+	# permanent state-change if executed with '--version' as a parameter.
+
+	if [[ -z "${parent:-}" || "$( basename -- "${parent#-}" )" == "bash" ]]; then
 		# If stdlib.sh is sourced directly, $0 will be 'bash' (or
 		# another shell name, which should be listed in /etc/shells)
 		#
-		bash="bash"
+		if [[ -n "${SHELL:-}" ]]; then
+			shell="$( basename "${SHELL}" )"
+		else
+			shell="bash" # We'll assume...
+		fi
 
 	elif [[ -r "${parent}" ]]; then
-		# Assume the our interpreter is some bash variant...
+		# Our interpreter should be some valid shell...
 		int="$( head -n 1 "${parent}" )"
 		int="$( sed 's|^#\! \?||' <<<"${int}" )"
 		if [[ \
@@ -210,21 +228,21 @@ function __STDLIB_oneshot_get_bash_version() {
 			"${int:0:9}" == "/bin/env " || \
 			"${int:0:13}" == "/usr/bin/env " \
 		]]; then
-			bash="$( cut -d' ' -f 2 <<<"${int}" )"
+			shell="$( cut -d' ' -f 2 <<<"${int}" )"
 		else
-			bash="$( cut -d' ' -f 1 <<<"${int}" )"
+			shell="$( cut -d' ' -f 1 <<<"${int}" )"
 		fi
 
 	else
 		warn "Unknown interpretor"
 	fi
 
-	if [[ -n "${bash:-}" ]]; then
-		bash="$( readlink -e "$( type -pf "${bash:-bash}" 2>/dev/null )" )"
-		if [[ -n "$bash:-" && -x "$bash" ]]; then
-			version="$( "$bash" --version 2>&1 | head -n 1 )" \
-				|| die "Cannot determine version for" \
-					"interpreter '$bash'"
+	if [[ -n "${shell:-}" ]]; then
+		shell="$( readlink -e "$( type -pf "${shell:-bash}" 2>/dev/null )" )"
+		if [[ -n "${shell:-}" && -x "${shell}" ]]; then
+			version="$( "${shell}" --version 2>&1 | head -n 1 )" || \
+				die "Cannot determine version for" \
+				    "interpreter '${shell}'"
 			#if grep -q "^GNU bash, version " >/dev/null 2>&1 <<<"${version}"; then
 			if echo "${version}" | grep -q "^GNU bash, version " >/dev/null 2>&1; then
 				#if ! grep -q " version [0-3]" >/dev/null 2>&1 <<<"${version}"; then
@@ -242,7 +260,7 @@ function __STDLIB_oneshot_get_bash_version() {
 		#	die "Cannot execute interpreter '${int}'"
 		fi
 
-		unset version bash int
+		unset version shell int
 	#else
 	#	die "Cannot locate this script (tried '${0}')"
 	fi
@@ -401,13 +419,13 @@ function __STDLIB_API_1_std::log() {
 	if [[ "${std_LOGFILE:-}" == "syslog" ]]; then
 		# We'll emulate 'logger -i' here, as we need to return and so
 		# can't use 'exec logger' to maintain PID...
-		message="[$$]: ${prefix} ${data}"
+		message="[${$}]: ${prefix} ${data}"
 		type -pf logger >/dev/null 2>&1 && logger \
 			-t "${NAME}" -- "${message}" >/dev/null 2>&1
 	fi
 
 	local date="$( date -u +'%Y%m%d %R.%S' )"
-	message="${NAME}($$) ${date} ${prefix} ${data}"
+	message="${NAME}(${$}) ${date} ${prefix} ${data}"
 
 	# We don't care whether std_LOGFILE exists, but we do care whether it's
 	# set...
@@ -528,6 +546,9 @@ function __STDLIB_API_1_symerror() {
 
 		return 1
 	fi
+
+	# Unreachable
+	return 255
 } # __STDLIB_API_1_symerror
 
 function __STDLIB_API_1_errsymbol() {
@@ -632,7 +653,7 @@ function __STDLIB_API_1_std::mktemp() {
 	# (Un)helpfully, the non-GNU mktemp returns an error if you try to find
 	# out what it is, which we can then take advantage of thusly:
 	mktemp --version >/dev/null 2>&1
-	case $? in
+	case ${?} in
 		0)
 			message="GNU mktemp failed"
 			standard=0
@@ -642,7 +663,7 @@ function __STDLIB_API_1_std::mktemp() {
 			standard=1
 			;;
 		*)
-			die "Cannot detect mktemp version: $?"
+			die "Cannot detect mktemp version: ${?}"
 			;;
 	esac
 
@@ -686,7 +707,7 @@ function __STDLIB_API_1_std::mktemp() {
 
 		__std_NEWFILES=(
 			${__std_NEWFILES[@]:-}
-			"$( eval "mktemp $opts$name\"" || {
+			"$( eval "mktemp ${opts}${name}\"" || {
 				error "${message}"
 				return 1
 			} )"
@@ -705,22 +726,22 @@ function __STDLIB_API_1_std::mktemp() {
 } # __STDLIB_API_1_std::mktemp
 
 function __STDLIB_API_1_std::emktemp() {
-	local var="$1" ; shift
+	local var="${1}" ; shift
 	local file files rc result
 
 	# Invoke std::mktemp and automatically save the generated files for
 	# later removal.
 	# Rather than:
 	#
-	#   tempfile="$( mktemp -t "$0"."$$".XXXXXXXX )"
+	#   tempfile="$( mktemp -t "${0}"."${$}".XXXXXXXX )"
 	#
 	# ... or:
 	#
-	#   tempfile="$( std::mktemp "$$" )"
+	#   tempfile="$( std::mktemp "${$}" )"
 	#
 	# ... instead do:
 	#
-	#   std::emktemp tempfile "$$"
+	#   std::emktemp tempfile "${$}"
 	#
 	# ... which will place the results into tempfile on success.
 
@@ -889,6 +910,9 @@ function __STDLIB_API_1_std::readlink() {
 
 		return 1
 	fi
+
+	# Unreachable
+	return 255
 } # __STDLIB_API_1_std::readlink
 
 
@@ -925,14 +949,94 @@ function __STDLIB_API_1_std::formatlist() {
 
 ###############################################################################
 #
+# stdlib.sh - Standard functions - Handle version-strings in a standard way
+#
+###############################################################################
+
+function __STDLIB_API_1_std::vcmp() {
+	local vone op vtwo list
+
+	# Does system 'sort' have version-sort capability (again, CentOS/Red
+	# Hat seem to lose out here...)
+	sort --version-sort </dev/null || return 254
+
+	if (( 3 == ${#@} )); then
+		vone="${1:-}"
+		op="${2:-}"
+		vtwo="${3:-}"
+	fi
+
+	case "${op:-}" in
+		'<'|lt|-lt)
+			if [[ "${vone}" != "${vtwo}" && "$( echo -e "${vone}\n${vtwo}" | sort -V 2>/dev/null | head -n 1 )" == "${vone}" ]]; then
+				# vone < vtwo
+				return 0
+			else
+				# vone !< vtwo
+				return 1
+			fi
+			;;
+		'<='|le|-le)
+			if [[ "${vone}" == "${vtwo}" || "$( echo -e "${vone}\n${vtwo}" | sort -V 2>/dev/null | head -n 1 )" == "${vone}" ]]; then
+				# vone <= vtwo
+				return 0
+			else
+				# vone > vtwo
+				return 1
+			fi
+			;;
+		'>'|gt|-gt)
+			if [[ "${vone}" != "${vtwo}" && "$( echo -e "${vone}\n${vtwo}" | sort -V 2>/dev/null | tail -n +2 )" == "${vone}" ]]; then
+				# vone > vtwo
+				return 0
+			else
+				# vone !> vtwo
+				return 1
+			fi
+			;;
+		'>='|ge|-ge)
+			if [[ "${vone}" == "${vtwo}" || "$( echo -e "${vone}\n${vtwo}" | sort -V 2>/dev/null | tail -n +2 )" == "${vone}" ]]; then
+				# vone >= vtwo
+				return 0
+			else
+				# vone < vtwo
+				return 1
+			fi
+			;;
+		*)
+			list="$(
+				for VERSION in "${@}"; do
+					echo "${VERSION}"
+				done | sort -V 2>/dev/null
+			)"
+			respond "${list}"
+			[[ "$( echo "${list}" | xargs echo )" == "$( echo "${@}" | xargs echo )" ]] && return 0 || return 1
+			;;
+	esac
+
+	# Unreachable
+	return 255
+} # __STDLIB_API_1_std::vcmp
+
+
+###############################################################################
+#
 # stdlib.sh - Standard functions - Ensure that needed binaries are present
 #
 ###############################################################################
 
 function __STDLIB_API_1_std::requires() {
-	local files="${@:-}"
+	local files
 	local item
+	local -i canexit=1
 	local -i rc=0
+
+	if [[ "${1}" =~ ^(--)?(no-?exit|no-?abort|keep|keep-?going)$ ]]; then
+		canexit=0
+		shift
+	fi
+
+	files="${@:-}"
 
 	[[ -n "${files:-}" ]] || return 1
 
@@ -943,7 +1047,7 @@ function __STDLIB_API_1_std::requires() {
 		}
 	done
 
-	(( rc )) && exit 1
+	(( canexit & rc )) && exit 1
 
 	return ${rc}
 } # __STDLIB_API_1_std::requires
@@ -951,7 +1055,7 @@ function __STDLIB_API_1_std::requires() {
 
 ###############################################################################
 #
-# stdlib.sh - Standard functions - Capture output of commands
+# stdlib.sh - Helper functions - Capture output of commands
 #
 ###############################################################################
 
@@ -975,10 +1079,13 @@ function __STDLIB_API_1_std::capture() {
 		all|both)
 			redirect="2>&1"
 			;;
+		none)
+			redirect=">/dev/null 2>&1"
+			;;
 		*)
 			error "Invalid parameters: prototype '${FUNCNAME}" \
 				"<stream> <command> [arguments]', received" \
-				"'<${stream:-}> <${cmd:-}> [${arg}]'"
+				"'<${stream:-}> <${cmd:-}> [${arg:-}]'"
 			return 255
 			;;
 	esac
@@ -1022,6 +1129,8 @@ function __STDLIB_API_1_std::ensure() {
 		die "${err:-${response:-}}"
 	fi
 
+	# Unreachable
+	return 255
 } # __STDLIB_API_1_std::ensure
 
 function __STDLIB_API_1_std::silence() {
@@ -1031,6 +1140,159 @@ function __STDLIB_API_1_std::silence() {
 
 	return ${?}
 } # __STDLIB_API_1_std::silence
+
+
+###############################################################################
+#
+# stdlib.sh - Helper functions - Allow for parameterised arguments
+#
+###############################################################################
+
+function __STDLIB_API_1_std::parseargs() {
+	local current
+	local arg
+	local -i onevalue=0 unrecok=0 rc=1
+
+	local unassigned="std_PARSEARGS_unassigned"
+
+	if [[ "${1:-}" =~ ^(--)?strip$ ]]; then
+		#respond "$(
+		#for arg in $( echo "${@}" | sed -r 's/^.*\s+--\s+//' ); do
+		#	echo "${arg:-}"
+		#done | grep -v '^-'
+		#)"
+		echo "${@}" | sed -r 's/^.*\s+--\s+//'
+		return 0
+	fi
+
+	arg="${unassigned}"
+
+	(( STDLIB_HAVE_BASH_4 )) || {
+		(( std_DEBUG )) && error "${FUNCNAME} requires bash-4 associative arrays"
+		return 1
+	}
+
+	# It would sometimes be incredibly useful to be able to pass unordered
+	# or optional parameters to a shell function, without the overhead of
+	# having to run getopt and parse the output for every invokation.
+	#
+	# The aim here is to provide a function which can be called by 'eval'
+	# in order to expand command-line arguments into variable declarations.
+	#
+	# For example:
+	#
+	#   function myfunc() {
+	#     local item1 item2 item3
+	#     eval $( std::parseargs "${@}" ) || {
+	#       set -- $( std::parseargs --strip -- "${@}" )
+	#       item1="${1:-}"
+	#       item2="${2:-}"
+	#       item3="${3:-}"
+	#     }
+	#     <...>
+	#   }
+	#
+	#   myfunc a b c # -> Variables populated, as usual, by inner block
+	#   myfunc -item3 c -item1 a -item2 b # -> Identical, but variables
+	#                                          populated by parseargs()
+	#
+	# Parameters should be passed as a single hypen followed by the
+	# variable name to set, then zero or more values for this variable.
+	# Options with double-hyphens are processed by std::parseargs internally
+	# in order to set default behaviour, and should all be passed prior to
+	# a double-hyphen.
+	# The return-code is zero if we have managed to populate at least one
+	# variable with a value, for one otherwise.
+	#
+	# Any values without an obvious associated variable name are saved as
+	# "std_PARSEARGS_unassigned"
+	#
+	# Internal options:
+	#   --single     - Only store the value following a variable to that
+	#                  variable, rather than storing everything until the
+	#                  next variable name;
+	#   --permissive - Don't return an error if no values are recognised
+	#   --var <name> - Specify the variable name for unrecognised values
+
+	local -A result
+
+	if grep -qw -- '--' <<<"${@}"; then
+		local options="$( sed -r 's/^(.*)\s+--\s.*$/\1/' <<<" ${@} " )"
+		local args="$( sed -r 's/^.*\s--\s+(.*)$/\1/' <<<" ${@} " )"
+
+		set -- ${options}
+		while [[ -n "${1:-}" ]]; do
+			current="${1}" ; shift
+			case "${current}" in
+				--onevalue|--single)
+					onevalue=1
+					;;
+				--unrecok|--permissive)
+					unrecok=1
+					;;
+				--unrec|--unknown|--variable|--var)
+					unassigned="${1:-}" ; shift
+					;;
+				*)
+					(( std_DEBUG )) && error "${FUNCNAME}: Unknown option '${current}'"
+					return 1
+					;;
+			esac
+		done
+		if ! [[ -n "${unassigned:-}" && "${unassigned}" =~ ^[a-zA-Z_]+[a-zA-Z0-9_]*$ ]]; then
+			(( std_DEBUG )) && error "${FUNCNAME}: Specified name '${unassigned:-}' is not a valid variable-name"
+			return 1
+		fi
+
+		set -- ${args}
+
+		unset args options
+	fi
+
+	while [[ -n "${1:-}" ]]; do
+		current="${1}" ; shift
+
+		(( 0 == ${#current} )) && continue
+
+		if [[ "${current:0:1}" == "-" ]]; then
+			arg="${current:1}"
+
+			# Not necessarily IEEE 1003.1-2001, but according to
+			# bash source...
+			if ! [[ "${arg}" =~ ^[a-zA-Z_]+[a-zA-Z0-9_]*$ ]]; then
+				(( std_DEBUG )) && error "${FUNCNAME}: Provided name '${arg:-}' is not a valid variable-name"
+				return 1
+			fi
+		else
+			[[ -n "${arg:-}" ]] || \
+				warn "${FUNCNAME}: Dropping argument '${current}'"
+
+			local existing="${result[${arg}]:-}"
+			if [[ -n "${existing:-}" && -n "${existing// /}" ]]; then
+				result[${arg}]="${existing} ${current}"
+			else
+				result[${arg}]="${current}"
+			fi
+			if (( unrecok )) || [[ "${arg}" != "${unassigned}" ]]; then
+				rc=0
+			fi
+			(( onevalue )) && arg="${unassigned}"
+		fi
+	done
+
+	if (( ! rc )); then
+		for arg in "${!result[@]}"; do
+			current="${result[${arg}]}"
+			if [[ "${current}" =~ \  ]]; then
+				respond "${arg// }='${current:-}'"
+			else
+				respond "${arg// }=${current:-}"
+			fi
+		done
+	fi
+
+	return ${rc}
+} # __STDLIB_API_1_std::parseargs
 
 
 ###############################################################################
@@ -1215,7 +1477,7 @@ export std_LIBPATH std_LIB
 # so '[[:space:]]' has to be used instead.  We can work around this as follows,
 # but it does negatively impact processing speed:
 declare s='\s'
-echo " " | eval "grep -qE '${s}'" || s='[[:space:]]'
+echo " " | eval "grep -Eq '${s}'" || s='[[:space:]]'
 
 # Create interface for functions of the appropriate API...
 #
@@ -1240,7 +1502,7 @@ while read fapi; do
 
 			if echo "${fapi}" | grep -q "^__STDLIB_API_${__STDLIB_API}_"; then
 				if fname="$( sed 's/^__STDLIB_API_[0-9]\+_//' <<<"${fapi}" )"; then
-					__STDLIB_functionlist=( ${__STDLIB_functionlist[@]:-} "$fname" )
+					__STDLIB_functionlist=( ${__STDLIB_functionlist[@]:-} "${fname}" )
 					eval "function ${fname}() { ${fapi} \"\${@:-}\"; }"
 
 					# Make functions available to child shells...
@@ -1276,7 +1538,7 @@ while read fapi; do
 done < <(
 	  grep "function" "${std_LIBPATH:-.}/${std_LIB}" \
 	| sed 's/#.*$//' \
-	| eval "grep -E '^$s*function$s+[a-zA-Z_]+[a-zA-Z0-9_:\-]*$s*\(\)$s*\{?$s*$'" \
+	| eval "grep -E '^${s}*function${s}+[a-zA-Z_]+[a-zA-Z0-9_:\-]*${s}*\(\)${s}*\{?${s}*$'" \
 	| sed -r 's/^\s*function\s+([a-zA-Z_]+[a-zA-Z0-9_:\-]*)\s*\(\)\s*\{?\s*$/\1/'
 )
 unset fapi s
