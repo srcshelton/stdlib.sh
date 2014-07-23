@@ -1,6 +1,6 @@
 # Copyright 2013,2014 Stuart Shelton
 # Distributed under the terms of the GNU General Public License v2
-# $Header: systems-engineering/lang/bash/stdlib.sh,v 1.3.0 2014/02/17 19:39:42 stuart.shelton Exp $
+# $Header: systems-engineering/lang/bash/stdlib.sh,v 1.4.1 2014/07/23 17:51:48 stuart.shelton Exp $
 # 
 # stdlib.sh standardised shared functions...
 
@@ -914,6 +914,29 @@ function __STDLIB_API_1_std::readlink() {
 	# Unreachable
 	return 255
 } # __STDLIB_API_1_std::readlink
+
+
+###############################################################################
+#
+# stdlib.sh - Standard functions - Improved HEREDOC support
+#
+###############################################################################
+
+function __STDLIB_API_1_std::define() {
+	local var="${1:-}" ; shift
+
+	# Usage:
+	#
+	# std::define MYVAR <<'EOF'
+	# heredoc content to be read into $MYVAR without using 'cat'
+	# You can 'quote ""things how you like...
+	# ... $( and this won't be executed )!
+	# EOF
+
+	[[ -n "${var:-}" ]] || return 1
+
+	IFS='\n' read -r -d '' ${var} || true
+} # __STDLIB_API_1_std::define
 
 
 ###############################################################################
