@@ -1,6 +1,6 @@
 # Copyright 2013,2014 Stuart Shelton
 # Distributed under the terms of the GNU General Public License v2
-# $Header: systems-engineering/lang/bash/stdlib.sh,v 1.4.1 2014/07/23 17:51:48 stuart.shelton Exp $
+# $Header: systems-engineering/lang/bash/stdlib.sh,v 1.4.1.1 2014/08/05 15:10:25 stuart.shelton Exp $
 # 
 # stdlib.sh standardised shared functions...
 
@@ -38,8 +38,9 @@ EOC
 
 
 # What API version are we exporting?
-export  std_RELEASE="1.4" # Add std::parseargs
-#export std_RELEASE="1.3" # Initial import
+#export std_RELEASE="1.3"   # Initial import
+#export std_RELEASE="1.4"   # Add std::parseargs
+export  std_RELEASE="1.4.1" # Add std::define
 readonly std_RELEASE
 
 
@@ -82,7 +83,7 @@ main "${@:-}"
 
 exit 0
 
-# set vi: syntax=sh colorcolumn=80 foldmethod=marker:
+# vi: set syntax=sh colorcolumn=80 foldmethod=marker:
 # --- CUT HERE ---
 EOC
 
@@ -1594,4 +1595,4 @@ fi
 #
 ###############################################################################
 
-# set vi: syntax=sh colorcolumn=80 foldmethod=marker nowrap:
+# vi: set filetype=sh syntax=sh commentstring=#%s foldmarker=\ {{{,\ }}} foldmethod=marker colorcolumn=80 nowrap:
