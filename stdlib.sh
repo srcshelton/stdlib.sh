@@ -1,6 +1,6 @@
 # Copyright 2013,2014 Stuart Shelton
 # Distributed under the terms of the GNU General Public License v2
-# $Header: systems-engineering/lang/bash/stdlib.sh,v 1.4.1.1 2014/08/05 15:10:25 stuart.shelton Exp $
+# $Header: systems-engineering/lang/bash/stdlib.sh,v 1.4.2.0 2014/08/14 18:52:28 stuart.shelton Exp $
 # 
 # stdlib.sh standardised shared functions...
 
@@ -40,7 +40,8 @@ EOC
 # What API version are we exporting?
 #export std_RELEASE="1.3"   # Initial import
 #export std_RELEASE="1.4"   # Add std::parseargs
-export  std_RELEASE="1.4.1" # Add std::define
+#export  std_RELEASE="1.4.1" # Add std::define
+export  std_RELEASE="1.4.2" # Add std::getfilesection, std::configure
 readonly std_RELEASE
 
 
@@ -1050,25 +1051,48 @@ function __STDLIB_API_1_std::vcmp() {
 ###############################################################################
 
 function __STDLIB_API_1_std::requires() {
-	local files
-	local item
-	local -i canexit=1
-	local -i rc=0
+	local files item location
+	local -i canexit=1 quiet=1 n m rc=0
 
-	if [[ "${1}" =~ ^(--)?(no-?exit|no-?abort|keep|keep-?going)$ ]]; then
-		canexit=0
-		shift
-	fi
+	for n in $( seq 1 ${#@} ); do
+		(( n > ${#@} )) && break
+
+		item="$( eval echo "\${${n}}" )"
+		if [[ "${item:-}" =~ ^(--)?(no-?exit|no-?abort|keep|keep-?going)$ ]]; then
+			canexit=0
+			rc=1
+		elif [[ "${item:-}" =~ ^(--)?(no-?quiet|path)$ ]]; then
+			quiet=0
+			rc=1
+		fi
+		if (( rc )); then
+			if (( n > 1 )); then
+				for m in $( seq 1 $(( n - 1 )) ); do
+					files="$( eval echo "${files:-} \${${m}}" )"
+				done
+			fi
+			if (( n < ${#@} )); then
+				for m in $( seq $(( n + 1 )) ${#@} ); do
+					files="$( eval echo "${files:-} \${${m}}" )"
+				done
+			fi
+			rc=0
+			eval set -- "${files:-}"
+		fi
+	done
+
+	(( !( quiet ) && ${#@} > 1 )) && die "Cannot return paths for multiple binaries"
 
 	files="${@:-}"
 
 	[[ -n "${files:-}" ]] || return 1
 
 	for item in ${files}; do
-		type -pf "${item}" >/dev/null 2>&1 || {
+		location=$( type -pf "${item}" 2>/dev/null ) || {
 			error "Cannot locate required '${item}' binary"
 			rc=1
 		}
+		(( quiet )) || respond "${location:-}"
 	done
 
 	(( canexit & rc )) && exit 1
@@ -1165,6 +1189,34 @@ function __STDLIB_API_1_std::silence() {
 	return ${?}
 } # __STDLIB_API_1_std::silence
 
+
+###############################################################################
+#
+# stdlib.sh - Helper functions - Process sections of Windows-style .ini files
+#
+###############################################################################
+
+function __STDLIB_API_1_std::getfilesection() {
+	local file="${1:-}" ; shift
+	local section="${1:-}" ; shift
+	local script
+
+	[[ -n "${file:-}" && -s "${file}" ]] || return 1
+	[[ -n "${section:-}" ]] || return 1
+
+	# By printing the line before setting 'output' to 1, we prevent the
+	# section header itself from being returned.
+	std::define script <<-EOF
+		BEGIN				{ output = 0 }
+		/^\s*\[.*\]\s*$/		{ output = 0 }
+		( 1 == output )			{ print \$0 }
+		/^\s*\[${section}\]\s*$/	{ output = 1 }
+	EOF
+
+	respond "$( awk -- "${script:-}" "${file}" )"
+
+	return ${?}
+} # __STDLIB_API_1_std::getfilesection
 
 ###############################################################################
 #
@@ -1317,6 +1369,80 @@ function __STDLIB_API_1_std::parseargs() {
 
 	return ${rc}
 } # __STDLIB_API_1_std::parseargs
+
+
+###############################################################################
+#
+# stdlib.sh - Helper functions - Export default variables, à la `configure`
+#
+###############################################################################
+
+function __STDLIB_API_1_std::configure() {
+	local prefix eprefix bindir sbindir libexecdir sysconfdir
+	local sharedstatedir localstatedir libdir includedir oldincludedir
+	local datarootdir datadir infodir localedir mandir docdir htmldir
+
+	# Built-in functions should avoid depending on parseargs(), but in this
+	# case the sheer number of options makes this the only sensible
+	# approach... and also a great real-world example of how to make use of
+	# the function above!
+
+	eval $( std::parseargs "${@:-}" ) || {
+		set -- $( std::parseargs --strip -- "${@:-}" )
+		prefix="${1:-}"
+		eprefix="${2:-}"
+		bindir="${3:-}"
+		sbindir="${4:-}"
+		libexecdir="${5:-}"
+		sysconfdir="${6:-}"
+		sharedstatedir="${7:-}"
+		localstatedir="${8:-}"
+		libdir="${9:-}"
+		includedir="${10:-}"
+		oldincludedir="${11:-}"
+		datarootdir="${12:-}"
+		datadir="${13:-}"
+		infodir="${14:-}"
+		localedir="${15:-}"
+		mandir="${16:-}"
+		docdir="${17:-}"
+		htmldir="${18:-}"
+	}
+
+	if [[ -n "${prefix:-}" ]]; then
+		export PREFIX="${prefix%/}"
+	else
+		export PREFIX="/usr/local"
+	fi
+	if [[ -n "${eprefix:-}" ]]; then
+		export EPREFIX="${eprefix%/}"
+	else
+		export EPREFIX="${PREFIX}"
+	fi
+
+	export BINDIR="${bindir:-${EPREFIX}/bin}"
+	export SBINDIR="${sbindir:-${EPREFIX}/sbin}"
+	export LIBEXECDIR="${libexecdir:-${EPREFIX}/libexec}"
+	export SYSCONFDIR="${sysconfdir:-${PREFIX}/etc}"
+	export SHAREDSTATEDIR="${sharedstatedir:-${PREFIX}/com}"
+	export LOCALSTATEDIR="${localstatedir:-${PREFIX}/var}"
+	export LIBDIR="${libdir:-${EPREFIX}/lib}"
+	export INCLUDEDIR="${includedir:-${PREFIX}/include}"
+	export OLDINCLUDEDIR="${oldincludedir:-/usr/include}"
+	export DATAROOTDIR="${datarootdir:-${PREFIX}/share}"
+	export DATADIR="${datadir:-${DATAROOTDIR}}"
+	export INFODIR="${infodir:-${DATAROOTDIR}/info}"
+	export LOCALEDIR="${localedir:-${DATAROOTDIR}/locale}"
+	export MANDIR="${mandir:-${DATAROOTDIR}/man}"
+	export DOCDIR="${docdir:-${DATAROOTDIR}/doc}"
+	export HTMLDIR="${htmldir:-${DOCDIR}}"
+
+	if [[ -d "${PREFIX:-}/" && -d "${EPREFIX:-}/" ]]; then
+		return 0
+	fi
+
+	return 1
+} # __STDLIB_API_1_std::configure()
 
 
 ###############################################################################

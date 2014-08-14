@@ -118,5 +118,7 @@ Functions
 | `std::capture()`        | Capture the output- or error- stream of a command                                              |
 | `std::ensure()`         | Exit with a specified error message if a command fails                                         |
 | `std::silence()`        | Execute a command and drop all output (e.g. `>/dev/null 2>&1`)                                 |
+| `std::getfilesection()  | Retrieve a single section from a Windows-style .ini file with square-bracketed section titles  |
 | `std::parseargs()`      | Allow functions to accept named parameters with only minor code-changes                        |
+| `std::configure()`      | Export variables containing the standard system paths as used by `configure` scripts           |
 
