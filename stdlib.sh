@@ -7,7 +7,18 @@
 # Only load stdlib once, and provide support for loading stdlib from bashrc to
 # reduce startup times...
 #
-if [[ -z "${STDLIB_HAVE_STDLIB:-}" ]]; then
+if [[ "$( type -t std::sentinel 2>&1 )" != "function" ]]; then
+if [[ -n "${STDLIB_HAVE_STDLIB:-}" ]]; then
+	std_LIB="${std_LIB:-stdlib.sh}"
+	NAME="$( basename -- "${0:-${std_LIB}}" )"
+	echo >&2
+	echo >&2 "WARN:   ${NAME} variables have been imported, but function definitions are"
+	echo >&2 "WARN:   missing - parent shell may be running in restricted, setuid, or"
+	echo >&2 "WARN:   privileged mode."
+	echo >&2
+	echo >&2 "NOTICE: Re-executing ${NAME} to re-generate all functions."
+	echo >&2
+fi
 
 
 # Pull this file into external scripts as follows:
@@ -40,8 +51,10 @@ EOC
 # What API version are we exporting?
 #export std_RELEASE="1.3"   # Initial import
 #export std_RELEASE="1.4"   # Add std::parseargs
-#export  std_RELEASE="1.4.1" # Add std::define
-export  std_RELEASE="1.4.2" # Add std::getfilesection, std::configure
+#export std_RELEASE="1.4.1" # Add std::define
+#export std_RELEASE="1.4.2" # Add std::getfilesection, std::configure
+export  std_RELEASE="1.4.3" # Re-load stdlib if functions aren't present due to
+                            # bash privileged_mode changes
 readonly std_RELEASE
 
 
@@ -206,6 +219,16 @@ declare -a __STDLIB_OWNED_FILES
 function __STDLIB_oneshot_get_bash_version() {
 	local parent="${0:-}"
 	local int shell version
+
+	if [[ -n "${BASH_VERSION}" ]]; then
+		if (( ${BASH_VERSION%%.*} >= 4 )); then
+			STDLIB_HAVE_BASH_4=1
+		else
+			STDLIB_HAVE_BASH_4=0
+		fi
+		export STDLIB_HAVE_BASH_4
+		return ${STDLIB_HAVE_BASH_4}
+	fi
 
 	# Please note - this function may have unintended consequences if
 	# invoked from a script which has an interpreter which causes a
@@ -1292,7 +1315,8 @@ function __STDLIB_API_1_std::parseargs() {
 
 	local -A result
 
-	if grep -qw -- '--' <<<"${@}"; then
+	#if grep -qw -- '--' <<<"${@}"; then
+	if echo "${@}" | grep -qw -- '--'; then
 		local options="$( sed -r 's/^(.*)\s+--\s.*$/\1/' <<<" ${@} " )"
 		local args="$( sed -r 's/^.*\s--\s+(.*)$/\1/' <<<" ${@} " )"
 
@@ -1564,6 +1588,13 @@ function __STDLIB_API_1_std::configure() {
 # stdlib.sh - Final setup and API mapping
 #
 ###############################################################################
+
+# This function does nothing, but we can check for its existence in order to
+# determine whether stdlib.sh should be reloaded...
+#
+function __STDLIB_API_1_std::sentinel() {
+	:
+} # __STDLIB_API_1_std::sentinel
 
 __STDLIB_oneshot_get_bash_version
 unset __STDLIB_oneshot_get_bash_version
