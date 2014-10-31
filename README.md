@@ -121,6 +121,6 @@ Functions
 | `std::getfilesection()` | Retrieve a single section from a Windows-style .ini file with square-bracketed section titles  |
 | `std::parseargs()`      | Allow functions to accept named parameters with only minor code-changes                        |
 | `std::configure()`      | Export variables containing the standard system paths as used by `configure` scripts           |
-| `std::http::squash()`   | Map HTTP response codes (0-599) down to shell return codes (0-255) by squashing unused values  |
-| `std::http::expand()`   | Map shell return codes (0-255) back up to HTTP response codes (0-599)                          |
+| `std::http::squash()`   | Map HTTP response codes (100-599) down to shell return codes (0-255) by squashing unused values|
+| `std::http::expand()`   | Map shell return codes (0-255) back up to HTTP response codes (100-599)                        |
 
