@@ -1,6 +1,6 @@
 # Copyright 2013,2014 Stuart Shelton
 # Distributed under the terms of the GNU General Public License v2
-# $Header: systems-engineering/lang/bash/stdlib.sh,v 1.4.2.0 2014/08/14 18:52:28 stuart.shelton Exp $
+# $Header: systems-engineering/lang/bash/stdlib.sh,v 1.4.5.0 2014/10/31 19:02:05 stuart.shelton Exp $
 # 
 # stdlib.sh standardised shared functions...
 
@@ -8,7 +8,7 @@
 # reduce startup times...
 #
 if [[ "$( type -t std::sentinel 2>&1 )" != "function" ]]; then
-if [[ -n "${STDLIB_HAVE_STDLIB:-}" ]]; then
+if [[ -n "${STDLIB_HAVE_STDLIB:-}" ]]; then # {{{
 	std_LIB="${std_LIB:-stdlib.sh}"
 	NAME="$( basename -- "${0:-${std_LIB}}" )"
 	echo >&2
@@ -18,7 +18,7 @@ if [[ -n "${STDLIB_HAVE_STDLIB:-}" ]]; then
 	echo >&2
 	echo >&2 "NOTICE: Re-executing ${NAME} to re-generate all functions."
 	echo >&2
-fi
+fi # }}}
 
 
 # Pull this file into external scripts as follows:
@@ -47,14 +47,17 @@ done
 # --- CUT HERE ---
 EOC
 
+# {{{
 
 # What API version are we exporting?
 #export std_RELEASE="1.3"   # Initial import
 #export std_RELEASE="1.4"   # Add std::parseargs
 #export std_RELEASE="1.4.1" # Add std::define
 #export std_RELEASE="1.4.2" # Add std::getfilesection, std::configure
-export  std_RELEASE="1.4.3" # Re-load stdlib if functions aren't present due to
+#export std_RELEASE="1.4.4" # Re-load stdlib if functions aren't present due to
                             # bash privileged_mode changes
+export  std_RELEASE="1.4.5" # Update exit-code and and add HTTP mapping
+                            # functions
 readonly std_RELEASE
 
 
@@ -101,6 +104,7 @@ exit 0
 # --- CUT HERE ---
 EOC
 
+# }}}
 
 #
 # Externally set control-variables:
@@ -129,7 +133,7 @@ EOC
 #
 # stdlib.sh - Setup and standard functions
 #
-###############################################################################
+########################################################################### {{{
 
 # Throw an error if parameter-expansion occurs with an unset variable.
 #
@@ -163,12 +167,14 @@ function respond() {
 ##alias output='echo -e'
 ##alias respond='echo'
 
+# }}}
+
 
 ###############################################################################
 #
 # stdlib.sh - Standard functions and variables
 #
-###############################################################################
+########################################################################### {{{
 
 unalias cp >/dev/null 2>&1
 unalias ls >/dev/null 2>&1
@@ -205,6 +211,8 @@ export std_ERRNO=0
 
 declare -a __STDLIB_OWNED_FILES
 
+# }}}
+
 
 ###############################################################################
 #
@@ -216,7 +224,7 @@ declare -a __STDLIB_OWNED_FILES
 #       we're sourced from a script itself sourced from another script... but
 #       in this case the ultimate parent does impose the interpreter.
 #
-function __STDLIB_oneshot_get_bash_version() {
+function __STDLIB_oneshot_get_bash_version() { # {{{
 	local parent="${0:-}"
 	local int shell version
 
@@ -293,7 +301,7 @@ function __STDLIB_oneshot_get_bash_version() {
 	export STDLIB_HAVE_BASH_4
 
 	return ${STDLIB_HAVE_BASH_4}
-} # __STDLIB_oneshot_get_bash_version
+} # __STDLIB_oneshot_get_bash_version # }}}
 
 
 ###############################################################################
@@ -317,11 +325,12 @@ function main() {
 
 # This function may be overridden
 #
-function __STDLIB_API_1_std::cleanup() {
-	local rc="${1:-0}" ; shift
+function __STDLIB_API_1_std::cleanup() { # {{{
+	local -i rc=${?}
+	[[ -n "${1:-}" ]] && (( ${1:-0} )) && rc=${1}; shift
 	local file
 
-	# Remove any STDLIB-generated temporary file and exit.
+	# Remove any STDLIB-generated temporary files and exit.
 
 	for file in "${__STDLIB_OWNED_FILES[@]:-}"; do
 		[[ -n "${file:-}" && -e "${file}" ]] && \
@@ -336,7 +345,7 @@ function __STDLIB_API_1_std::cleanup() {
 	[[ -n "${__STDLIB_SIGTERM:-}" ]] && trap ${__STDLIB_SIGTERM} TERM
 
 	exit ${rc}
-} # __STDLIB_API_1_std::cleanup
+} # __STDLIB_API_1_std::cleanup # }}}
 
 # The 'std::cleanup' stub for the appropriate API should be in place by now...
 #
@@ -349,18 +358,18 @@ trap std::cleanup EXIT INT QUIT TERM
 
 # This function should be overridden, or the ${std_USAGE} variable define
 #
-function __STDLIB_API_1_usage-message() {
+function __STDLIB_API_1_usage-message() { # {{{
 	warn "${FUNCNAME} invoked - please use 'std::usage-message' instead"
 
 	std::usage-message "${@:-}"
-} # __STDLIB_API_1_usage-message
+} # __STDLIB_API_1_usage-message # }}}
 
 # Heavyweight compatibility work-around:
 export __STDLIB_usage_message_definition="$( typeset -f usage-message )"
 
 # This function should be overridden, or the ${std_USAGE} variable defined
 #
-function __STDLIB_API_1_std::usage-message() {
+function __STDLIB_API_1_std::usage-message() { # {{{
 	die "No override std::usage-message() function defined"
 
 	# The following output will appear in-line after 'Usage: ${NAME} '...
@@ -372,11 +381,11 @@ Further instructions here, e.g.
 	-h : Show this help information
 END
 	return 0
-} # __STDLIB_API_1_std::usage-message
+} # __STDLIB_API_1_std::usage-message # }}}
 
 # This function may be overridden
 #
-function __STDLIB_API_1_std::usage() {
+function __STDLIB_API_1_std::usage() { # {{{
 	local rc="${1:-0}" ; shift
 
 	# Optional arguments should be denoted as '[parameter]', required
@@ -396,7 +405,7 @@ function __STDLIB_API_1_std::usage() {
 	fi
 
 	exit ${rc}
-} # __STDLIB_API_1_std::usage
+} # __STDLIB_API_1_std::usage # }}}
 
 
 ###############################################################################
@@ -405,7 +414,7 @@ function __STDLIB_API_1_std::usage() {
 #
 ###############################################################################
 
-function __STDLIB_API_1_std::wrap() {
+function __STDLIB_API_1_std::wrap() { # {{{
 	local prefix="${1:-}" ; shift
 	local text="${@:-}"
 
@@ -424,9 +433,9 @@ function __STDLIB_API_1_std::wrap() {
 	fi
 
 	return 0
-} # __STDLIB_API_1_std::wrap
+} # __STDLIB_API_1_std::wrap # }}}
 
-function __STDLIB_API_1_std::log() {
+function __STDLIB_API_1_std::log() { # {{{
 	local prefix="${1:-${std_LIB}}" ; shift
 	local data="${@:-}" message
 
@@ -462,7 +471,7 @@ function __STDLIB_API_1_std::log() {
 	fi
 
 	return $(( ! std_DEBUG ))
-} # __STDLIB_API_1_std::log
+} # __STDLIB_API_1_std::log # }}}
 
 #
 # N.B.: To prevent unnecessary indirection, call API-versioned functions below
@@ -470,57 +479,57 @@ function __STDLIB_API_1_std::log() {
 
 # This function may be overridden
 #
-function __STDLIB_API_1_die() {
+function __STDLIB_API_1_die() { # {{{
 	[[ -n "${@:-}" ]] && std_DEBUG=1 __STDLIB_API_1_std::log >&2 "FATAL: " "${@}"
 	__STDLIB_API_1_std::cleanup 1
 
 	return 1
-} # __STDLIB_API_1_die
+} # __STDLIB_API_1_die # }}}
 
 # This function may be overridden
 #
-function __STDLIB_API_1_error() {
+function __STDLIB_API_1_error() { # {{{
 	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "ERROR: " "${@:-Unspecified error}"
 
 	return 1
-} # __STDLIB_API_1_error
+} # __STDLIB_API_1_error # }}}
 
 # This function may be overridden
 #
-function __STDLIB_API_1_warn() {
+function __STDLIB_API_1_warn() { # {{{
 	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "WARN:  " "${@:-Unspecified warning}"
 
 	return 1
-} # __STDLIB_API_1_warn
+} # __STDLIB_API_1_warn # }}}
 
 
 # This function may be overridden
 #
-function __STDLIB_API_1_note() {
+function __STDLIB_API_1_note() { # {{{
 	std_DEBUG=1 __STDLIB_API_1_std::log "NOTICE:" "${@:-Unspecified notice}"
 
 	return 0
-} # __STDLIB_API_1_note
+} # __STDLIB_API_1_note # }}}
 
-function __STDLIB_API_1_notice() {
+function __STDLIB_API_1_notice() { # {{{
 	__STDLIB_API_1_note "${@:-}"
-} # __STDLIB_API_1_notice
+} # __STDLIB_API_1_notice # }}}
 
 # This function may be overridden
 #
-function __STDLIB_API_1_info() {
+function __STDLIB_API_1_info() { # {{{
 	std_DEBUG=1 __STDLIB_API_1_std::log "INFO:  " "${@:-Unspecified message}"
 
 	return 0
-} # __STDLIB_API_1_info
+} # __STDLIB_API_1_info # }}}
 
 # This function may be overridden
 #
-function __STDLIB_API_1_debug() {
+function __STDLIB_API_1_debug() { # {{{
 	(( std_DEBUG )) && __STDLIB_API_1_std::log >&2 "DEBUG: " "${@:-Unspecified message}"
 
 	return $(( ! std_DEBUG ))
-} # __STDLIB_API_1_debug
+} # __STDLIB_API_1_debug # }}}
 
 
 ###############################################################################
@@ -529,7 +538,7 @@ function __STDLIB_API_1_debug() {
 #
 ###############################################################################
 
-function __STDLIB_oneshot_errno_init() {
+function __STDLIB_oneshot_errno_init() { # {{{
 	local count=1
 
 	declare -a __STDLIB_errsym __STDLIB_errstr
@@ -551,9 +560,9 @@ function __STDLIB_oneshot_errno_init() {
 	#export __STDLIB_errsym __STDLIB_errstr __STDLIB_errtotal STDLIB_HAVE_ERRNO=1
 
 	return 0
-} # __STDLIB_oneshot_errno_init
+} # __STDLIB_oneshot_errno_init # }}}
 
-function __STDLIB_API_1_symerror() {
+function __STDLIB_API_1_symerror() { # {{{
 	local err="${1:-${std_ERRNO:-}}"
 
 	(( STDLIB_HAVE_ERRNO )) || {
@@ -574,9 +583,9 @@ function __STDLIB_API_1_symerror() {
 
 	# Unreachable
 	return 255
-} # __STDLIB_API_1_symerror
+} # __STDLIB_API_1_symerror # }}}
 
-function __STDLIB_API_1_errsymbol() {
+function __STDLIB_API_1_errsymbol() { # {{{
 	local symbol="${1:-}"
 	local n
 
@@ -596,9 +605,9 @@ function __STDLIB_API_1_errsymbol() {
 	done
 
 	return 0
-} # __STDLIB_API_1_errsymbol
+} # __STDLIB_API_1_errsymbol # }}}
 
-function __STDLIB_API_1_strerror() {
+function __STDLIB_API_1_strerror() { # {{{
 	local err="${1:-${std_ERRNO:-}}" ; shift
 	local msg="Unknown error" rc=1
 
@@ -628,7 +637,7 @@ function __STDLIB_API_1_strerror() {
 	respond "${msg}"
 
 	return ${rc}
-} # __STDLIB_API_1_strerror
+} # __STDLIB_API_1_strerror # }}}
 
 
 ###############################################################################
@@ -637,7 +646,7 @@ function __STDLIB_API_1_strerror() {
 #
 ###############################################################################
 
-function __STDLIB_API_1_std::garbagecollect() {
+function __STDLIB_API_1_std::garbagecollect() { # {{{
 	local file rc
 
 	# Add an additional file to the list of files to be removed when
@@ -653,9 +662,9 @@ function __STDLIB_API_1_std::garbagecollect() {
 	done
 
 	return ${rc:-1}
-} # __STDLIB_API_1_std::garbagecollect
+} # __STDLIB_API_1_std::garbagecollect # }}}
 
-function __STDLIB_API_1_std::mktemp() {
+function __STDLIB_API_1_std::mktemp() { # {{{
 	local message standard tmpdir opts file name
 
 	# Create a temporary file, which will be removed by cleanup() on
@@ -748,9 +757,9 @@ function __STDLIB_API_1_std::mktemp() {
 	fi
 
 	return 0
-} # __STDLIB_API_1_std::mktemp
+} # __STDLIB_API_1_std::mktemp # }}}
 
-function __STDLIB_API_1_std::emktemp() {
+function __STDLIB_API_1_std::emktemp() { # {{{
 	local var="${1}" ; shift
 	local file files rc result
 
@@ -789,7 +798,7 @@ function __STDLIB_API_1_std::emktemp() {
 	eval export "${var}"=\""${result}"\"
 
 	return ${rc}
-} # __STDLIB_API_1_std::emktemp
+} # __STDLIB_API_1_std::emktemp # }}}
 
 
 ###############################################################################
@@ -798,7 +807,7 @@ function __STDLIB_API_1_std::emktemp() {
 #
 ###############################################################################
 
-function __STDLIB_API_1_std::push() {
+function __STDLIB_API_1_std::push() { # {{{
 	local std_push_result="" std_push_var std_push_current std_push_segment std_push_arg std_push_add_quote=""
 	local -i rc=0
 
@@ -909,7 +918,7 @@ set +o xtrace
 
 echo "Debug: std_push_var='${std_push_var}', value=|$( eval echo \"\${${std_push_var}:-}\" )|, rc=${rc}"
 	return ${rc}
-} # __STDLIB_API_1_std::push
+} # __STDLIB_API_1_std::push # }}}
 
 
 ###############################################################################
@@ -918,7 +927,7 @@ echo "Debug: std_push_var='${std_push_var}', value=|$( eval echo \"\${${std_push
 #
 ###############################################################################
 
-function __STDLIB_API_1_std::readlink() {
+function __STDLIB_API_1_std::readlink() { # {{{
 	local file="${1:-}" ; shift
 
 	[[ -n "${file:-}" ]] || return 1
@@ -926,6 +935,9 @@ function __STDLIB_API_1_std::readlink() {
 	# Find the target of a symlink, in circumstances where GNU readlink is
 	# not available
 
+	# TODO: Non-trivial implementatin which is actually usable on, for
+	#       example, Mac OS...
+	#
 	if [[ -L "${file}" ]]; then
 		ls -l "${file}" | sed 's/^.* -> //'
 
@@ -938,7 +950,7 @@ function __STDLIB_API_1_std::readlink() {
 
 	# Unreachable
 	return 255
-} # __STDLIB_API_1_std::readlink
+} # __STDLIB_API_1_std::readlink # }}}
 
 
 ###############################################################################
@@ -947,7 +959,7 @@ function __STDLIB_API_1_std::readlink() {
 #
 ###############################################################################
 
-function __STDLIB_API_1_std::define() {
+function __STDLIB_API_1_std::define() { # {{{
 	local var="${1:-}" ; shift
 
 	# Usage:
@@ -961,7 +973,7 @@ function __STDLIB_API_1_std::define() {
 	[[ -n "${var:-}" ]] || return 1
 
 	IFS='\n' read -r -d '' ${var} || true
-} # __STDLIB_API_1_std::define
+} # __STDLIB_API_1_std::define # }}}
 
 
 ###############################################################################
@@ -970,7 +982,7 @@ function __STDLIB_API_1_std::define() {
 #
 ###############################################################################
 
-function __STDLIB_API_1_std::formatlist() {
+function __STDLIB_API_1_std::formatlist() { # {{{
 	local item
 
 	if [[ -n "${3:-}" ]]; then
@@ -992,7 +1004,7 @@ function __STDLIB_API_1_std::formatlist() {
 	fi
 
 	return 0
-} # __STDLIB_API_1_std::formatlist
+} # __STDLIB_API_1_std::formatlist # }}}
 
 
 ###############################################################################
@@ -1001,7 +1013,7 @@ function __STDLIB_API_1_std::formatlist() {
 #
 ###############################################################################
 
-function __STDLIB_API_1_std::vcmp() {
+function __STDLIB_API_1_std::vcmp() { # {{{
 	local vone op vtwo list
 
 	# Does system 'sort' have version-sort capability (again, CentOS/Red
@@ -1064,7 +1076,7 @@ function __STDLIB_API_1_std::vcmp() {
 
 	# Unreachable
 	return 255
-} # __STDLIB_API_1_std::vcmp
+} # __STDLIB_API_1_std::vcmp # }}}
 
 
 ###############################################################################
@@ -1073,7 +1085,7 @@ function __STDLIB_API_1_std::vcmp() {
 #
 ###############################################################################
 
-function __STDLIB_API_1_std::requires() {
+function __STDLIB_API_1_std::requires() { # {{{
 	local files item location
 	local -i canexit=1 quiet=1 n m rc=0
 
@@ -1121,7 +1133,7 @@ function __STDLIB_API_1_std::requires() {
 	(( canexit & rc )) && exit 1
 
 	return ${rc}
-} # __STDLIB_API_1_std::requires
+} # __STDLIB_API_1_std::requires # }}}
 
 
 ###############################################################################
@@ -1130,7 +1142,7 @@ function __STDLIB_API_1_std::requires() {
 #
 ###############################################################################
 
-function __STDLIB_API_1_std::capture() {
+function __STDLIB_API_1_std::capture() { # {{{
 	local stream="${1:-}" ; shift
 	local cmd="${1:-}" ; shift
 	local arg="${@:-}" ; shift
@@ -1170,9 +1182,9 @@ function __STDLIB_API_1_std::capture() {
 	output "${response:-}"
 
 	return ${rc}
-} # __STDLIB_API_1_std::capture
+} # __STDLIB_API_1_std::capture # }}}
 
-function __STDLIB_API_1_std::ensure() {
+function __STDLIB_API_1_std::ensure() { # {{{
 	local err="${1:-}" ; shift
 	local cmd="${1:-}" ; shift
 	local arg="${@:-}" ; shift
@@ -1202,15 +1214,15 @@ function __STDLIB_API_1_std::ensure() {
 
 	# Unreachable
 	return 255
-} # __STDLIB_API_1_std::ensure
+} # __STDLIB_API_1_std::ensure # }}}
 
-function __STDLIB_API_1_std::silence() {
+function __STDLIB_API_1_std::silence() { # {{{
 	[[ -n "${1:-}" ]] || return 1
 
 	std::capture all "${@:-}" >/dev/null
 
 	return ${?}
-} # __STDLIB_API_1_std::silence
+} # __STDLIB_API_1_std::silence # }}}
 
 
 ###############################################################################
@@ -1219,7 +1231,7 @@ function __STDLIB_API_1_std::silence() {
 #
 ###############################################################################
 
-function __STDLIB_API_1_std::getfilesection() {
+function __STDLIB_API_1_std::getfilesection() { # {{{
 	local file="${1:-}" ; shift
 	local section="${1:-}" ; shift
 	local script
@@ -1239,7 +1251,80 @@ function __STDLIB_API_1_std::getfilesection() {
 	respond "$( awk -- "${script:-}" "${file}" )"
 
 	return ${?}
-} # __STDLIB_API_1_std::getfilesection
+} # __STDLIB_API_1_std::getfilesection # }}}
+
+
+###############################################################################
+#
+# stdlib.sh - Helper functions - Map HTTP return-codes to shell return codes
+#
+###############################################################################
+
+function  __STDLIB_API_1_std::http::squash() { # {{{
+	local -i code=${1:-} ; shift
+	local -i result=0
+
+	debug "${FUNCNAME} received HTTP code '${code:-}'"
+
+	if (( ( code > 99 && code < 400 ) || ( code > 499 && code < 600 ) )); then
+		(( code > 102 && code < 200 )) && warn "Attempting to squash non-RFC2616 Status Code '${code}'"
+		(( code > 206 && code < 300 )) && warn "Attempting to squash non-RFC2616 Status Code '${code}'"
+		(( code > 307 && code < 300 )) && warn "Attempting to squash non-RFC2616 Status Code '${code}'"
+		(( code > 417 && code < 300 )) && warn "Attempting to squash non-RFC2616 Status Code '${code}'"
+		(( code > 505 && code < 600 )) && warn "Attempting to squash non-RFC2616 Status Code '${code}'"
+
+		(( code == 226 )) && code=103 # ... mapped to 13
+
+		(( result = ( ( code / 100 ) * 10 ) + ( code - ( code / 100 ) * 100 ) ))
+	elif (( code > 399 && code < 500 )); then
+		(( result = ( code - 400 ) + 150 ))
+	else
+		error "Cannot squash non-RFC2616 Status Code '${code}'"
+	fi
+
+	debug "${FUNCNAME} returned shell code ${result}"
+
+	return ${result}
+} # __STDLIB_API_1_std::http::squash # }}}
+
+function __STDLIB_API_1_std::http::expand() { # {{{
+	local -i code=${1:-} ; shift
+	local -i result=0
+	local -i rc=0
+
+	debug "${FUNCNAME} received shell code ${code:-}"
+
+	if (( 13 == code )); then
+		result=226
+		rc=0
+	elif (( code > 59 && code < 150 )); then
+		(( result = 500 + ( code - 50 ) ))
+		rc=0
+	elif (( code > 149 )); then
+		(( result = ( code - 150 ) + 400 ))
+		rc=0
+	elif (( code > 9 && code < 250 )); then
+		(( result = ( ( code / 10 ) * 100 ) + ( code - ( ( code / 10 ) * 10 ) ) ))
+		rc=0
+	else
+		rc=1
+	fi
+
+	(( result < 100 )) && { warn "Attempting to expand invalid shell code '${code}'"; result=0; rc=1; }
+	(( result > 102 && result < 200 )) && warn "Attempting to expand non-RFC2616 shell code '${code}'"
+	(( result > 206 && result < 300 )) && warn "Attempting to expand non-RFC2616 shell code '${code}'"
+	(( result > 307 && result < 300 )) && warn "Attempting to expand non-RFC2616 shell code '${code}'"
+	(( result > 417 && result < 300 )) && warn "Attempting to expand non-RFC2616 shell code '${code}'"
+	(( result > 505 && result < 600 )) && warn "Attempting to expand non-RFC2616 shell code '${code}'"
+	(( result > 599 )) && { warn "Attempting to expand invalid shell code '${code}'"; result=0; rc=1; }
+
+	debug "${FUNCNAME} returned HTTP code '${result}': ${rc}"
+
+	(( rc )) || respond ${result}
+
+	return ${rc}
+} # __STDLIB_API_1_std::http::expand # }}}
+
 
 ###############################################################################
 #
@@ -1247,7 +1332,7 @@ function __STDLIB_API_1_std::getfilesection() {
 #
 ###############################################################################
 
-function __STDLIB_API_1_std::parseargs() {
+function __STDLIB_API_1_std::parseargs() { # {{{
 	local current
 	local arg
 	local -i onevalue=0 unrecok=0 rc=1
@@ -1392,7 +1477,7 @@ function __STDLIB_API_1_std::parseargs() {
 	fi
 
 	return ${rc}
-} # __STDLIB_API_1_std::parseargs
+} # __STDLIB_API_1_std::parseargs # }}}
 
 
 ###############################################################################
@@ -1401,7 +1486,7 @@ function __STDLIB_API_1_std::parseargs() {
 #
 ###############################################################################
 
-function __STDLIB_API_1_std::configure() {
+function __STDLIB_API_1_std::configure() { # {{{
 	local prefix eprefix bindir sbindir libexecdir sysconfdir
 	local sharedstatedir localstatedir libdir includedir oldincludedir
 	local datarootdir datadir infodir localedir mandir docdir htmldir
@@ -1466,14 +1551,14 @@ function __STDLIB_API_1_std::configure() {
 	fi
 
 	return 1
-} # __STDLIB_API_1_std::configure()
+} # __STDLIB_API_1_std::configure() # }}}
 
 
 ###############################################################################
 #
 # stdlib.sh - Code samples - Sample functions
 #
-###############################################################################
+########################################################################### {{{
 
 # Sample iterator function
 #function iterate_vars() {
@@ -1522,12 +1607,14 @@ function __STDLIB_API_1_std::configure() {
 #	fi
 #} # lock
 
+# }}}
+
 
 ###############################################################################
 #
 # stdlib.sh - Code samples - Useful functions
 #
-###############################################################################
+########################################################################### {{{
 
 # ${#x} returns the length of the contents of ${x}:
 #
@@ -1582,19 +1669,146 @@ function __STDLIB_API_1_std::configure() {
 #	unalias $stdlib_alias 2>/dev/null
 #done
 
+# }}}
+
+###############################################################################
+#
+# stdlib.sh - Code tests - Confirm correct operation of more complex functions
+#
+########################################################################### {{{
+
+# N.B.: These functions are not versioned, as they aren't intended for general
+#       use.  However, functions are free to interrogate the API version and
+#       may still perform version-specific tests.
+#
+function http::test() { # {{{
+	local -i ic=0 rc=0 code=0 result=0
+
+	local -A codes
+	# 1xx Informational
+	codes[100]='Continue'
+	codes[101]='Switching Protocols'
+	# Non-2616 Status Codes
+	codes[102]='Processing' # RFC2518; WebDAV
+	# 2xx Successful
+	codes[200]='OK'
+	codes[201]='Created'
+	codes[202]='Accepted'
+	codes[203]='Non-Authoritative Information' # Since HTTP/1.1
+	codes[204]='No Content'
+	codes[205]='Reset Content'
+	codes[206]='Partial Content'
+	# Non-2616 Status Codes
+	codes[207]='Multi-Status' # RRC4918; WebDAV
+	codes[208]='Already Reported' # RFC5842; WebDAV
+	codes[226]='IM Used' # RFC3229; WebDAV
+	# 3xx Redirection
+	codes[300]='Multiple Choices'
+	codes[301]='Moved Permanently'
+	codes[302]='Found'
+	codes[303]='See Other' # Since HTTP/1.1
+	codes[304]='Not Modified'
+	codes[305]='Use Proxy' # Since HTTP/1.1
+	codes[306]='(Switch Proxy - Unused)'
+	codes[307]='Temporary Redirect'
+	# Non-2616 Status Codes
+	codes[308]='Permanent Redirect' # RFC7238; Experimental
+	# 4xx Client Error
+	codes[400]='Bad Request'
+	codes[401]='Unauthorized'
+	codes[402]='Payment Required'
+	codes[403]='Forbidden'
+	codes[404]='Not Found'
+	codes[405]='Method Not Allowed'
+	codes[406]='Not Acceptable'
+	codes[407]='Proxy Authentication Required'
+	codes[408]='Request Timeout'
+	codes[409]='Conflict'
+	codes[410]='Gone'
+	codes[411]='Length Required'
+	codes[412]='Precondition Failed'
+	codes[413]='Request Entity Too Large'
+	codes[414]='Request-URI Too Long'
+	codes[415]='Unsupported Media Type'
+	codes[416]='Requested Range Not Satisfiable'
+	codes[417]='Expectation Failed'
+	# Non-2616 Status Codes
+	codes[418]="I'm a teapot" # RFC2324
+	codes[419]='Authentication Timeout' # *Not* in RFC2616
+	codes[420]='Method Failure/Enhance Your Calm' # Spring; Deprecated/Twitter API v1.0
+	codes[421]='Expectation Failed'
+	codes[422]='Unprocessable Entity' # RFC4918; WebDAV
+	codes[423]='Locked' # RFC4918; WebDAV
+	codes[424]='Failed Dependency' # RFC4918; WebDAV
+	codes[426]='Upgrade Required'
+	codes[428]='Precondition Required' # RFC6585
+	codes[429]='Too Many Requests' # RFC6585
+	codes[431]='Request Header Fields Too Large' # RFC6585
+	codes[440]='Login Timeout' # Microsoft
+	codes[444]='No Response' # nginx
+	codes[449]='Retry With' # Microsoft
+	codes[450]='Blocked by Windows Parental Controls' # Microsoft
+	codes[451]='Unavailable For Legal Reasons/Redirect' # Draft/Microsoft
+	codes[494]='Request Header Too Large' # nginx
+	codes[495]='Cert Error' # nginx
+	codes[496]='No Cert' # nginx
+	codes[497]='HTTP to HTTPS' # nginx
+	codes[498]='Token expired/invalid' # ersi
+	codes[499]='Client Closed Request/Token Required' # nginx/ersi
+	# 5xx Server Error
+	codes[500]='Internal Server Error'
+	codes[501]='Not Implemented'
+	codes[502]='Bad Gateway'
+	codes[503]='Service Unavailable'
+	codes[504]='Gateway Timeout'
+	codes[505]='HTTP Version Not Supported'
+	# Non-2616 Status Codes
+	codes[506]='Variant Also Negotiates' # RFC2295
+	codes[507]='Insufficient Storage' # RFC4918; WebDAV
+	codes[508]='Loop Detected' # RFC5842; WebDAV
+	codes[509]='Bandwidth Limit Exceeded' # Apache
+	codes[510]='Not Extended' # RFC2774
+	codes[511]='Network Authentication Required' # RFC6585
+	codes[520]='Origin Error' # CloudFlare
+	codes[521]='Web server is down' # CloudFlare
+	codes[522]='Connection timed out' # CloudFlare
+	codes[523]='Proxy Declined Request' # CloudFlare
+	codes[524]='A timeout occurred' # CloudFlare
+	codes[598]='Network read timeout error' # Microsoft
+	codes[599]='Network connect timeout error' # Microsoft
+
+	output "Testing HTTP-to-shell response-code mappings\n"
+	output "N.B.: non-RFC2616 status codes are expected failures\n"
+
+	for code in $( for ic in ${!codes[@]}; do echo ${ic}; done | sort -n ); do
+		std::http::squash ${code} 2>/dev/null ; ic=${?}
+		rc=$( std::http::expand ${ic} )
+		if (( code == rc )); then
+			info "${code} '${codes[${code}]}' -> ${ic} -> ${rc} : Okay"
+		else
+			warn "${code} '${codes[${code}]}' -> ${ic} -> ${rc} : FAIL"
+			result=1
+		fi
+	done
+
+	return ${result}
+} # http::test # }}}
+
+# }}}
+
 
 ###############################################################################
 #
 # stdlib.sh - Final setup and API mapping
 #
-###############################################################################
+########################################################################### {{{
 
 # This function does nothing, but we can check for its existence in order to
 # determine whether stdlib.sh should be reloaded...
 #
-function __STDLIB_API_1_std::sentinel() {
+function __STDLIB_API_1_std::sentinel() { # {{{
 	:
-} # __STDLIB_API_1_std::sentinel
+} # __STDLIB_API_1_std::sentinel # }}}
 
 __STDLIB_oneshot_get_bash_version
 unset __STDLIB_oneshot_get_bash_version
@@ -1732,6 +1946,8 @@ export -f output respond
 #export __STDLIB_functionlist
 
 export STDLIB_HAVE_STDLIB=1
+
+# }}}
 
 fi # [[ -z "${STDLIB_HAVE_STDLIB:-}" ]] # Line 10
 
