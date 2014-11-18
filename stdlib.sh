@@ -1,6 +1,6 @@
 # Copyright 2013,2014 Stuart Shelton
 # Distributed under the terms of the GNU General Public License v2
-# $Header: systems-engineering/lang/bash/stdlib.sh,v 1.4.5.0 2014/10/31 19:02:05 stuart.shelton Exp $
+# $Header: systems-engineering/lang/bash/stdlib.sh,v 1.4.5.1 2014/11/18 15:11:36 stuart.shelton Exp $
 # 
 # stdlib.sh standardised shared functions...
 
@@ -424,12 +424,21 @@ function __STDLIB_API_1_std::wrap() { # {{{
 	#       works - this variable isn't exported to scripts by
 	#       default, and is lost on invocation.
 	if [[ -n "${prefix:-}" ]]; then
-		  output "${text}" \
-		| fold -sw "$(( ${COLUMNS:-80} - ( ${#prefix} + 1 )))" \
-		| sed "s/^/${prefix} /"
+		if (( ${COLUMNS:-80} > ( ${#prefix} + 2 ) )); then
+			  output "${text}" \
+			| fold -sw "$(( ${COLUMNS:-80} - ( ${#prefix} + 1 ) ))" \
+			| sed "s/^/${prefix} /"
+		else
+			  output "${text}" \
+			| sed "s/^/${prefix} /"
+		fi
 	else
-		  output "${text}" \
-		| fold -sw "$(( ${COLUMNS:-80} - 1))"
+		if (( ${COLUMNS:-80} > 1 )); then
+			  output "${text}" \
+			| fold -sw "$(( ${COLUMNS:-80} - 1))"
+		else
+			  output "${text}"
+		fi
 	fi
 
 	return 0
