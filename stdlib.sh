@@ -1,6 +1,5 @@
 # Copyright 2013-2015 Stuart Shelton
 # Distributed under the terms of the GNU General Public License v2
-# $Header: systems-engineering/lang/bash/stdlib.sh,v 1.4.5.1 2014/11/18 15:11:36 stuart.shelton Exp $
 # 
 # stdlib.sh standardised shared functions...
 
@@ -116,6 +115,7 @@ EOC
 #
 # STDLIB_WANT_ERRNO	- Load errno-like functions;
 # STDLIB_WANT_MEMCACHED	- Load native memcached functions;
+# STDLIB_WANT_UNITTESTS - Run unit-tests on imported functions;
 # STDLIB_API		- Specify the stdlib API to adhere to.
 #
 # Exported control-variables:
@@ -344,7 +344,7 @@ function __STDLIB_API_1_std::cleanup() { # {{{
 	# Remove any STDLIB-generated temporary files and exit.
 
 	for file in "${__STDLIB_OWNED_FILES[@]:-}"; do
-		(( std_INTERNAL_DEBUG )) && output >&2 "DEBUG: ${FUNCNAME} is removing file '${file}'"
+		(( std_INTERNAL_DEBUG )) && output >&2 "DEBUG: ${FUNCNAME##*_} is removing file '${file}'"
 		[[ -n "${file:-}" && -e "${file}" ]] && \
 			rm -f "${file}" >/dev/null 2>&1
 	done
@@ -360,6 +360,8 @@ function __STDLIB_API_1_std::cleanup() { # {{{
 	[[ -n "${__STDLIB_SIGQUIT:-}" ]] && trap ${__STDLIB_SIGQUIT} QUIT
 	[[ -n "${__STDLIB_SIGTERM:-}" ]] && trap ${__STDLIB_SIGTERM} TERM
 
+	# 'rc' is numeric, and therefore not subject to word-splitting
+	# shellcheck disable=SC2086
 	exit ${rc}
 } # __STDLIB_API_1_std::cleanup # }}}
 
@@ -379,7 +381,7 @@ fi
 # This function should be overridden, or the ${std_USAGE} variable define
 #
 function __STDLIB_API_1_usage-message() { # {{{
-	warn "${FUNCNAME} invoked - please use 'std::usage-message' instead"
+	warn "${FUNCNAME##*_} invoked - please use 'std::usage-message' instead"
 
 	std::usage-message "${@:-}"
 } # __STDLIB_API_1_usage-message # }}}
@@ -424,6 +426,8 @@ function __STDLIB_API_1_std::usage() { # {{{
 		fi
 	fi
 
+	# 'rc' is numeric, and therefore not subject to word-splitting
+	# shellcheck disable=SC2086
 	exit ${rc}
 } # __STDLIB_API_1_std::usage # }}}
 
@@ -631,6 +635,8 @@ function __STDLIB_API_1_errsymbol() { # {{{
 
 	for n in $( seq 0 $(( ${__STDLIB_errtotal:-0} - 1 )) ); do
 		if [[ "${symbol}" == "${__STDLIB_errsym[ ${n} ]}" ]]; then
+			# 'n' is numeric, and therefore not subject to word-splitting
+			# shellcheck disable=SC2086
 			respond "${n}"
 			return ${n}
 		fi
@@ -694,7 +700,7 @@ function __STDLIB_API_1_std::garbagecollect() { # {{{
 	done
 
 	if (( std_INTERNAL_DEBUG )); then
-		output >&2 "DEBUG: ${FUNCNAME} updated '__STDLIB_OWNED_FILES' to:"
+		output >&2 "DEBUG: ${FUNCNAME##*_} updated '__STDLIB_OWNED_FILES' to:"
 		for file in "${__STDLIB_OWNED_FILES[@]}"; do
 			output >&2 "${std_TAB}${file}"
 		done
@@ -705,15 +711,16 @@ function __STDLIB_API_1_std::garbagecollect() { # {{{
 } # __STDLIB_API_1_std::garbagecollect # }}}
 
 function __STDLIB_API_1_std::mktemp() { # {{{
-	local tmpdir suffix
+	local tmpdir suffix files
 	local -i namedargs=1
 
 	# Usage: std::mktemp [-tmpdir <directory>] [-suffix <extension>] _
 	#        [file ...]
 	local std_PARSEARGS_parsed=0
-	eval $( std::parseargs --single --permissive -- "${@:-}" )
+	eval "$( std::parseargs --single --permissive --var files -- "${@:-}" )"
 	(( std_PARSEARGS_parsed )) || {
-		set -- $( std::parseargs --strip -- "${@:-}" )
+		eval set -- "$( std::parseargs --strip -- "${@:-}" )"
+		files="${*:-}"
 		namedargs=0
 	}
 
@@ -755,7 +762,7 @@ function __STDLIB_API_1_std::mktemp() { # {{{
 			standard=$__std_mktemp_standard_gnu
 			;;
 		1)
-			[[ -n "${suffix:-}" ]] && debug "${FUNCNAME} Removing" \
+			[[ -n "${suffix:-}" ]] && debug "${FUNCNAME##*_} Removing" \
 				"unsupported 'suffix' option with non-GNU system mktemp"
 			unset suffix
 			message="legacy/BSD mktemp failed"
@@ -814,12 +821,12 @@ function __STDLIB_API_1_std::mktemp() { # {{{
 		esac
 	fi
 
-	local -a __std_NEWFILES files=( "${@:-}" )
+	local -a __std_NEWFILES
 	local file name
 
-	(( 0 == ${#files[@]} )) && files+=( "temp" )
-	for file in "${files[@]}"; do
-		name="${NAME}.${file}.XXXXXXXX${suffix:+.${suffix}}"
+	[[ -n "${files:-}" ]] || files="${NAME}"
+	for file in ${files}; do
+		name="${file}.XXXXXXXX${suffix:+.${suffix}}"
 
 		# Otherwise undocumented, **potentially dangerous**, configuration setting...
 		if [[ -n "${STDLIB_REUSE_TEMPFILES:-}" ]]; then
@@ -828,6 +835,8 @@ function __STDLIB_API_1_std::mktemp() { # {{{
 			filename="$( find "${tmpdir}" -mindepth 1 -maxdepth 1 -name "${NAME}.${file}.*" -print 2>/dev/null | tail -n 1 )"
 
 			if [[ -n "${filename:-}" && -w "${filename}" ]]; then
+				# We're intentionally matching the literal quote characters here...
+				# shellcheck disable=SC2076
 				[[ " ${__STDLIB_OWNED_FILES[@]} " =~ " ${filename} " ]] || \
 					__STDLIB_OWNED_FILES+=( "${filename}" )
 
@@ -857,7 +866,7 @@ function __STDLIB_API_1_std::mktemp() { # {{{
 	fi
 
 	if (( std_INTERNAL_DEBUG )); then
-		output >&2 "DEBUG: ${FUNCNAME} updated '__STDLIB_OWNED_FILES' to:"
+		output >&2 "DEBUG: ${FUNCNAME##*_} updated '__STDLIB_OWNED_FILES' to:"
 		for file in "${__STDLIB_OWNED_FILES[@]}"; do
 			output >&2 "${std_TAB}${file}"
 		done
@@ -873,21 +882,25 @@ function __STDLIB_API_1_std::emktemp() { # {{{
 	# Usage: std::emktemp -var <variable> [-tmpdir <directory>] _
 	#        [-suffix <extension>] [filename component ...]
 	local std_PARSEARGS_parsed=0
-	eval $( std::parseargs --single --permissive --var names -- "${@:-}" )
-	(( std_PARSEARGS_parsed )) && {
-		set -- ${names:-}
+	eval "$( std::parseargs --single --permissive --var names -- "${@:-}" )"
+	if (( std_PARSEARGS_parsed )); then
+		eval set -- "${names:-}"
 		if [[ -z "${var:-}" ]]; then
 			var="${1}" ; shift
 		fi
-	} || {
-		set -- $( std::parseargs --strip -- "${@:-}" )
+	else
+		eval set -- "$( std::parseargs --strip -- "${@:-}" )"
 		var="${1}" ; shift
-	}
+	fi
 
 	[[ -n "${var:-}" ]] || {
 		error "${FUNCNAME##*_} requires at least one argument"
 		return 1
 	}
+	if ! [[ "${var}" =~ ^[a-zA-Z_]+[a-zA-Z0-9_]*$ ]]; then
+		error "${FUNCNAME##*_} parameter-name '${var}' is not a valid variable-name"
+		return 1
+	fi
 
 	# Invoke std::mktemp and automatically save the generated files for
 	# later removal.
@@ -905,24 +918,25 @@ function __STDLIB_API_1_std::emktemp() { # {{{
 	#
 	# ... which will place the results into tempfile on success.
 
-	local file rc result
-	local -a files
-	files=( $( __STDLIB_API_1_std::mktemp ${tmpdir:+-tmpdir "${tmpdir}"} ${suffix:+-suffix "${suffix}"} ${*:-${$}} ) )
+	local file rc
+	local -a files result
+	files=( $( eval "__STDLIB_API_1_std::mktemp ${tmpdir:+-tmpdir "${tmpdir}"} ${suffix:+-suffix "${suffix}"} ${*:-${$}}" ) )
 	rc=${?}
 
 	if (( rc )); then
 		return ${rc}
 	else
-		result=""
-		for file in "${files[@]}"; do
+		for file in "${files[@]:-}"; do
 			__STDLIB_API_1_std::garbagecollect "${file}" \
-				&& result="$(
-					echo -e "${result:+${result}\n}${file}"
-				   )" \
+				&& result+=( "${file}" ) \
 				|| rc=1
 		done
 	fi
-	eval export "${var}"=\""${result}"\"
+	if [[ -n "${result[*]:-}" ]]; then
+		eval "export ${var}='${result[*]}'"
+	else
+		rc=1
+	fi
 
 	return ${rc}
 } # __STDLIB_API_1_std::emktemp # }}}
@@ -1069,6 +1083,10 @@ function __STDLIB_API_1_std::readlink() { # {{{
 		#readlink "${file}" # <- Will actually, in a fairly consistent
 		                    #    way, do the same as the line below.
 				    #    The real need is for -[fem] options...
+		# We're looking to easily find symlink targets - MacOS has
+		# 'stat -F' (which doesn't work with GNU userland) whilst
+		# GNU tools don't work on BSD/MacOS...
+		# shellcheck disable=SC2012
 		ls -l "${file}" | sed 's/^.* -> //'
 
 		return 0
@@ -1117,11 +1135,11 @@ function __STDLIB_API_1_std::formatlist() { # {{{
 
 	if [[ -n "${3:-}" ]]; then
 		item="${1:-}" ; shift
-		respond "${item:-}, $( ${FUNCNAME} "${@:-}" )"
+		respond "${item:-}, $( ${FUNCNAME##*_} "${@:-}" )"
 	elif [[ -n "${2:-}" ]]; then
 		item="$(
 			for item in "${FUNCNAME[@]}"; do
-				echo "${item}"
+				echo "${item##*_}"
 			done | grep -c "${FUNCNAME}"
 		)"
 		if (( item > 1 )); then
@@ -1301,7 +1319,7 @@ function __STDLIB_API_1_std::capture() { # {{{
 			redirect=">/dev/null 2>&1"
 			;;
 		*)
-			error "Invalid parameters: prototype '${FUNCNAME}" \
+			error "Invalid parameters: prototype '${FUNCNAME##*_}" \
 				"<stream> <command> [arguments]', received" \
 				"'<${stream:-}> <${cmd:-}> [${args[*]}]'"
 			return 255
@@ -1313,7 +1331,7 @@ function __STDLIB_API_1_std::capture() { # {{{
 		return 255
 	fi
 
-	response="$( eval "${cmd}" "${args[@]}" ${redirect} )" ; rc=${?}
+	response="$( eval "${cmd} ${args[*]} ${redirect}" )" ; rc=${?}
 	output "${response:-}"
 
 	return ${rc}
@@ -1399,7 +1417,7 @@ function  __STDLIB_API_1_std::http::squash() { # {{{
 	local -i code=${1:-} ; shift
 	local -i result=0
 
-	debug "${FUNCNAME} received HTTP code '${code:-}'"
+	debug "${FUNCNAME##*_} received HTTP code '${code:-}'"
 
 	if (( ( code > 99 && code < 400 ) || ( code > 499 && code < 600 ) )); then
 		(( code > 102 && code < 200 )) && warn "Attempting to squash non-RFC2616 Status Code '${code}'"
@@ -1417,7 +1435,7 @@ function  __STDLIB_API_1_std::http::squash() { # {{{
 		error "Cannot squash non-RFC2616 Status Code '${code}'"
 	fi
 
-	debug "${FUNCNAME} returned shell code ${result}"
+	debug "${FUNCNAME##*_} returned shell code ${result}"
 
 	return ${result}
 } # __STDLIB_API_1_std::http::squash # }}}
@@ -1427,7 +1445,7 @@ function __STDLIB_API_1_std::http::expand() { # {{{
 	local -i result=0
 	local -i rc=0
 
-	debug "${FUNCNAME} received shell code ${code:-}"
+	debug "${FUNCNAME##*_} received shell code ${code:-}"
 
 	if (( 13 == code )); then
 		result=226
@@ -1453,7 +1471,7 @@ function __STDLIB_API_1_std::http::expand() { # {{{
 	(( result > 505 && result < 600 )) && warn "Attempting to expand non-RFC2616 shell code '${code}'"
 	(( result > 599 )) && { warn "Attempting to expand invalid shell code '${code}'"; result=0; rc=1; }
 
-	debug "${FUNCNAME} returned HTTP code '${result}': ${rc}"
+	debug "${FUNCNAME##*_} returned HTTP code '${result}': ${rc}"
 
 	(( rc )) || respond ${result}
 
@@ -1484,7 +1502,7 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 	fi
 
 	(( STDLIB_HAVE_BASH_4 )) || {
-		(( std_DEBUG )) && error "${FUNCNAME} requires bash-4 associative arrays"
+		(( std_DEBUG )) && error "${FUNCNAME##*_} requires bash-4 associative arrays"
 		std_PARSEARGS_parsed=0
 		respond "std_PARSEARGS_parsed=${std_PARSEARGS_parsed:-0}"
 		return 1
@@ -1503,7 +1521,7 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 	#     local std_PARSEARGS_parsed item1 item2 item3
 	#     eval $( std::parseargs "${@}" )
 	#     (( std_PARSEARGS_parsed )) || {
-	#       set -- $( std::parseargs --strip -- "${@}" )
+	#       eval set -- $( std::parseargs --strip -- "${@}" )
 	#       item1="${1:-}"
 	#       item2="${2:-}"
 	#       item3="${3:-}"
@@ -1551,10 +1569,10 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 					unrecok=1
 					;;
 				--unrec|--unknown|--variable|--var)
-					unassigned="${1:-}" ; shift
-
-					if ! [[ -n "${unassigned:-}" && "${unassigned}" =~ ^[a-zA-Z_]+[a-zA-Z0-9_]*$ ]]; then
-						(( std_DEBUG )) && error "${FUNCNAME}: Specified name '${unassigned:-}' is not a valid variable-name"
+					if [[ -n "${1:-}" && "${1}" =~ ^[a-zA-Z_]+[a-zA-Z0-9_]*$ ]]; then
+						unassigned="${1}" ; shift
+					else
+						(( std_DEBUG )) && error "${FUNCNAME##*_}: Specified name '${1:-}' is not a valid variable-name"
 						std_PARSEARGS_parsed=0
 						respond "std_PARSEARGS_parsed=${std_PARSEARGS_parsed:-0}"
 						return 1
@@ -1564,7 +1582,7 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 					break
 					;;
 				*)
-					(( std_DEBUG )) && error "${FUNCNAME}: Unknown option '${current}'"
+					(( std_DEBUG )) && error "${FUNCNAME##*_}: Unknown option '${current}'"
 					std_PARSEARGS_parsed=0
 					respond "std_PARSEARGS_parsed=${std_PARSEARGS_parsed:-0}"
 					return 1
@@ -1585,14 +1603,14 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 			# Not necessarily IEEE 1003.1-2001, but according to
 			# bash source...
 			if ! [[ "${arg}" =~ ^[a-zA-Z_]+[a-zA-Z0-9_]*$ ]]; then
-				(( std_DEBUG )) && error "${FUNCNAME}: Provided name '${arg:-}' is not a valid variable-name"
+				(( std_DEBUG )) && error "${FUNCNAME##*_}: Provided name '${arg:-}' is not a valid variable-name"
 				std_PARSEARGS_parsed=0
 				respond "std_PARSEARGS_parsed=${std_PARSEARGS_parsed:-0}"
 				return 1
 			fi
 		else
 			if [[ -z "${arg:-}" ]]; then
-				warn "${FUNCNAME}: Dropping argument '${current}'"
+				warn "${FUNCNAME##*_}: Dropping argument '${current}'"
 				continue
 			fi
 
@@ -1613,7 +1631,7 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 		for arg in "${!result[@]}"; do
 			current="${result[${arg}]}"
 			if [[ "${current}" =~ \  ]]; then
-				respond "${arg// }='${current:-}'"
+				respond "${arg// }=\"${current:-}\""
 			else
 				respond "${arg// }=${current:-}"
 			fi
@@ -1622,6 +1640,7 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 
 	std_PARSEARGS_parsed=$(( !( rc ) ))
 	respond "std_PARSEARGS_parsed=${std_PARSEARGS_parsed:-0}"
+
 	return ${rc}
 } # __STDLIB_API_1_std::parseargs # }}}
 
@@ -1643,9 +1662,9 @@ function __STDLIB_API_1_std::configure() { # {{{
 	# the function above!
 
 	local std_PARSEARGS_parsed=0
-	eval $( std::parseargs "${@:-}" )
+	eval "$( std::parseargs "${@:-}" )"
 	(( std_PARSEARGS_parsed )) || {
-		set -- $( std::parseargs --strip -- "${@:-}" )
+		eval set -- "$( std::parseargs --strip -- "${@:-}" )"
 		prefix="${1:-}"
 		eprefix="${2:-}"
 		bindir="${3:-}"
@@ -1833,7 +1852,7 @@ function http::test() { # {{{
 	local -i ic=0 rc=0 code=0 result=0
 
 	(( STDLIB_HAVE_BASH_4 )) || {
-		(( std_DEBUG )) && error "${FUNCNAME} requires bash-4 associative arrays"
+		(( std_DEBUG )) && error "${FUNCNAME##*_} requires bash-4 associative arrays"
 		return 1
 	}
 
@@ -1933,6 +1952,8 @@ function http::test() { # {{{
 	output "Testing HTTP-to-shell response-code mappings\n"
 	output "N.B.: non-RFC2616 status codes are expected failures\n"
 
+	# 'ic' and 'code' are numeric, and therefore not subject to word-splitting
+	# shellcheck disable=SC2086
 	for code in $( for ic in "${!codes[@]}"; do echo ${ic}; done | sort -n ); do
 		std::http::squash ${code} 2>/dev/null ; ic=${?}
 		rc=$( std::http::expand ${ic} )
