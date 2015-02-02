@@ -115,7 +115,6 @@ EOC
 #
 # STDLIB_WANT_ERRNO	- Load errno-like functions;
 # STDLIB_WANT_MEMCACHED	- Load native memcached functions;
-# STDLIB_WANT_UNITTESTS - Run unit-tests on imported functions;
 # STDLIB_API		- Specify the stdlib API to adhere to.
 #
 # Exported control-variables:
@@ -1631,7 +1630,7 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 		for arg in "${!result[@]}"; do
 			current="${result[${arg}]}"
 			if [[ "${current}" =~ \  ]]; then
-				respond "${arg// }=\"${current:-}\""
+				respond "${arg// }='${current:-}'"
 			else
 				respond "${arg// }=${current:-}"
 			fi
