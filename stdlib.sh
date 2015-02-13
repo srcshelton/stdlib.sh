@@ -1388,7 +1388,8 @@ function __STDLIB_API_1_std::getfilesection() { # {{{
 	local section="${1:-}" ; shift
 	local script
 
-	[[ -n "${file:-}" && -s "${file}" ]] || return 1
+	[[ -n "${file:-}" ]] || return 1
+	[[ -s "${file}" || -p "${file}" ]] || return 1
 	[[ -n "${section:-}" ]] || return 1
 
 	# By printing the line before setting 'output' to 1, we prevent the
