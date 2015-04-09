@@ -153,7 +153,9 @@ set +o histexpand
 # output from pipeline-intermediate commands.
 #
 function output() {
-	[[ -n "${*:-}" ]] && echo -e "${*}"
+	local flags="-e"
+	[[ " ${1:-} " == " -n " ]] && { flags+="n" ; shift ; }
+	[[ -n "${*:-}" ]] && echo ${flags} "${*}"
 } # output
 
 # Use 'respond' rather than 'echo' to clearly differentiate function results
@@ -1652,9 +1654,10 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 ###############################################################################
 
 function __STDLIB_API_1_std::configure() { # {{{
-	local prefix eprefix bindir sbindir libexecdir sysconfdir
-	local sharedstatedir localstatedir libdir includedir oldincludedir
-	local datarootdir datadir infodir localedir mandir docdir htmldir
+	local prefix exec_prefix bindir sbindir libexecdir sysconfdir
+	local sharedstatedir localstatedir runstatedir libdir includedir
+	local oldincludedir datarootdir datadir infodir localedir mandir docdir
+	local htmldir
 
 	# Built-in functions should avoid depending on parseargs(), but in this
 	# case the sheer number of options makes this the only sensible
@@ -1666,23 +1669,24 @@ function __STDLIB_API_1_std::configure() { # {{{
 	(( std_PARSEARGS_parsed )) || {
 		eval set -- "$( std::parseargs --strip -- "${@:-}" )"
 		prefix="${1:-}"
-		eprefix="${2:-}"
+		exec_prefix="${2:-}"
 		bindir="${3:-}"
 		sbindir="${4:-}"
 		libexecdir="${5:-}"
 		sysconfdir="${6:-}"
 		sharedstatedir="${7:-}"
 		localstatedir="${8:-}"
-		libdir="${9:-}"
-		includedir="${10:-}"
-		oldincludedir="${11:-}"
-		datarootdir="${12:-}"
-		datadir="${13:-}"
-		infodir="${14:-}"
-		localedir="${15:-}"
-		mandir="${16:-}"
-		docdir="${17:-}"
-		htmldir="${18:-}"
+		runstatedir="${9:-}"
+		libdir="${10:-}"
+		includedir="${11:-}"
+		oldincludedir="${12:-}"
+		datarootdir="${13:-}"
+		datadir="${14:-}"
+		infodir="${15:-}"
+		localedir="${16:-}"
+		mandir="${17:-}"
+		docdir="${18:-}"
+		htmldir="${19:-}"
 	}
 
 	if [[ -n "${prefix:-}" ]]; then
@@ -1690,19 +1694,20 @@ function __STDLIB_API_1_std::configure() { # {{{
 	else
 		export PREFIX="/usr/local"
 	fi
-	if [[ -n "${eprefix:-}" ]]; then
-		export EPREFIX="${eprefix%/}"
+	if [[ -n "${exec_prefix:-}" ]]; then
+		export EXEC_PREFIX="${exec_prefix%/}"
 	else
-		export EPREFIX="${PREFIX}"
+		export EXEC_PREFIX="${PREFIX}"
 	fi
 
-	export BINDIR="${bindir:-${EPREFIX}/bin}"
-	export SBINDIR="${sbindir:-${EPREFIX}/sbin}"
-	export LIBEXECDIR="${libexecdir:-${EPREFIX}/libexec}"
+	export BINDIR="${bindir:-${EXEC_PREFIX}/bin}"
+	export SBINDIR="${sbindir:-${EXEC_PREFIX}/sbin}"
+	export LIBEXECDIR="${libexecdir:-${EXEC_PREFIX}/libexec}"
 	export SYSCONFDIR="${sysconfdir:-${PREFIX}/etc}"
 	export SHAREDSTATEDIR="${sharedstatedir:-${PREFIX}/com}"
 	export LOCALSTATEDIR="${localstatedir:-${PREFIX}/var}"
-	export LIBDIR="${libdir:-${EPREFIX}/lib}"
+	export RUNSTATEDIR="${runstatedir:-${LOCALSTATEDIR}/run}"
+	export LIBDIR="${libdir:-${EXEC_PREFIX}/lib}"
 	export INCLUDEDIR="${includedir:-${PREFIX}/include}"
 	export OLDINCLUDEDIR="${oldincludedir:-/usr/include}"
 	export DATAROOTDIR="${datarootdir:-${PREFIX}/share}"
@@ -1713,7 +1718,7 @@ function __STDLIB_API_1_std::configure() { # {{{
 	export DOCDIR="${docdir:-${DATAROOTDIR}/doc}"
 	export HTMLDIR="${htmldir:-${DOCDIR}}"
 
-	if [[ -d "${PREFIX:-}/" && -d "${EPREFIX:-}/" ]]; then
+	if [[ -d "${PREFIX:-}/" && -d "${EXEC_PREFIX:-}/" ]]; then
 		return 0
 	fi
 
@@ -1768,10 +1773,14 @@ function __STDLIB_API_1_std::configure() { # {{{
 #	mkdir -p "$( dirname "$lockfile" )" 2>/dev/null || exit 1
 #
 #	if ( set -o noclobber ; echo "$$" >"$lockfile" ) 2>/dev/null; then
-#		trap cleanup EXIT INT QUIT TERM
+#		std::garbagecollect "${lockfile}"
+#		return ${?}
 #	else
-#		exit 1
+#		return 1
 #	fi
+#
+#	# Unreachable
+#	return 128
 #} # lock
 
 # }}}
