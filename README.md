@@ -96,13 +96,13 @@ Functions
 | `std::usage()`          | Output help text from `${std_USAGE}` or std::usage-message()                                   |
 | `std::wrap()`           | Format text to wrap to the width of the console at a word-end - N.B. Requires 'export COLUMNS' |
 | `std::log()`            | Output text to console, file, or syslog                                                        |
-| `die()`                 | Output text in a standard format and exit with a failure code                                  |
-| `error()`               | Output text in a standard format                                                               |
-| `warn()`                | Output text in a standard format                                                               |
-| `note()`                | Output text in a standard format                                                               |
-| `notice()`              | Output text in a standard format                                                               |
-| `info()`                | Output text in a standard format                                                               |
-| `debug()`               | Output text in a standard format                                                               |
+| `die()`                 | Output text in a standardised format and exit with a failure code                              |
+| `error()`               | Output text in a standardised format                                                           |
+| `warn()`                | Output text in a standardised format                                                           |
+| `note()`                | Output text in a standardised format                                                           |
+| `notice()`              | Output text in a standardised format                                                           |
+| `info()`                | Output text in a standardised format                                                           |
+| `debug()`               | Output text in a standardised format                                                           |
 | `symerror()`            | errno: Provide symbol name (such as '`EERROR`') for specified code                             |
 | `errsymbol()`           | errno: Provide code for specified symbol                                                       |
 | `strerror()`            | errno: Provide description string for most recent or specified code                            |
@@ -118,6 +118,7 @@ Functions
 | `std::capture()`        | Capture the output- or error- stream of a command                                              |
 | `std::ensure()`         | Exit with a specified error message if a command fails                                         |
 | `std::silence()`        | Execute a command and drop all output (e.g. `>/dev/null 2>&1`)                                 |
+| `std::wordsplit()`      | Return each whitespace-separated element from the (quoted) input, without unexpected globbing  |
 | `std::getfilesection()` | Retrieve a single section from a Windows-style .ini file with square-bracketed section titles  |
 | `std::parseargs()`      | Allow functions to accept named parameters with only minor code-changes                        |
 | `std::configure()`      | Export variables containing the standard system paths as used by `configure` scripts           |

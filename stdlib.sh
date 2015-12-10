@@ -8,10 +8,14 @@
 #
 if [[ "$( type -t std::sentinel 2>&1 )" != "function" ]]; then
 if [[ -n "${STDLIB_HAVE_STDLIB:-}" ]]; then # {{{
-	std_LIB="${std_LIB:-stdlib.sh}"
-	NAME="$( basename -- "${0:-${std_LIB}}" )"
-	[[ "${NAME:-}" == "$( basename -- "${SHELL:-bash}" )" ]] && \
-		NAME="${std_LIB}"
+	if [[ -z "${NAME:-}" ]]; then
+		if [[ -z "${std_LIB:-}" ]]; then
+			std_LIB="${std_LIB:-stdlib.sh}"
+		fi
+		NAME="$( basename -- "${0:-${std_LIB}}" )"
+		[[ "${NAME:-}" == "$( basename -- "${SHELL:-bash}" )" ]] && \
+			NAME="${std_LIB}"
+	fi
 	echo >&2
 	echo >&2 "WARN:   ${NAME} variables have been imported, but function definitions are"
 	echo >&2 "WARN:   missing - parent shell may be running in restricted, setuid, or"
@@ -60,8 +64,10 @@ EOC
                             # bash privileged_mode changes
 #export std_RELEASE="1.4.5" # Update exit-code and and add HTTP mapping
                             # functions
-export  std_RELEASE="1.4.6" # Fix issues identified by shellcheck.net, and
+#export std_RELEASE="1.4.6" # Fix issues identified by shellcheck.net, and
                             # improve MacOS compatibility
+export  std_RELEASE="1.4.7" # Fix warnings identified by shellcheck.net, add
+                            # std::wordsplit
 readonly std_RELEASE
 
 
@@ -73,6 +79,7 @@ std_DEBUG="${DEBUG:-0}"
 declare std_TRACE
 # Standard usage is:
 #
+# shellcheck disable=SC2034
 std_TRACE="${TRACE:-0}"
 #
 # ... and then include:
@@ -85,12 +92,14 @@ EOC
 #
 # ... near the top of the calling script.
 
+
 # If this is not overridden, then logging will be disabled:
 #
 declare std_LOGFILE="/dev/null"
 #
 # Note that std_LOGFILE may also be given the special value of "syslog" to use
 # 'logger'(1) to send messages to local syslogd.
+
 
 # All scripts should end with the lines:
 #
@@ -109,6 +118,7 @@ exit 0
 EOC
 
 # }}}
+
 
 #
 # Externally set control-variables:
@@ -148,6 +158,13 @@ set -u
 # Try to impose sane handling of the '!' character...
 #
 set +o histexpand
+
+# Prevent non-matching shell globs from being literally interpreted...
+#
+#shopt -qs nullglob
+# ... or abort when a glob fails to match anything:
+shopt -qs failglob
+
 
 # Use 'output' rather than 'echo' to clearly differentiate user-visible
 # output from pipeline-intermediate commands.
@@ -194,9 +211,11 @@ export std_LIBPATH="${std_PREFIX}/lib"
 
 # ${0} may equal '-bash' if invoked directly, in which case basename fails as
 # it tries to interpret '-b ash'.
-export NAME="$( basename -- "${0:-${std_LIB:-stdlib.sh}}" )"
+declare NAME
+NAME="$( basename -- "${0:-${std_LIB:-stdlib.sh}}" )"
 [[ "${NAME:-}" == "$( basename -- "${SHELL:-bash}" )" ]] && \
 	NAME="${std_LIB:-stdlib.sh}"
+export NAME
 
 # Ensure a sane sorting order...
 export LC_ALL="C"
@@ -237,7 +256,7 @@ function __STDLIB_oneshot_get_bash_version() { # {{{
 	local parent="${0:-}"
 	local int shell version
 
-	if [[ -n "${BASH_VERSION}" ]]; then
+	if [[ -n "${BASH_VERSION:-}" ]]; then
 		if (( ${BASH_VERSION%%.*} >= 4 )); then
 			STDLIB_HAVE_BASH_4=1
 		else
@@ -265,7 +284,7 @@ function __STDLIB_oneshot_get_bash_version() { # {{{
 		# Our interpreter should be some valid shell...
 		int="$( head -n 1 "${parent}" )"
 		local sed="sed -r"
-		${sed} '' >/dev/null 2>&1 <<<'' || sed='sed -E'
+		${sed} '' >/dev/null 2>&1 <<<'' || sed='sed -E' # ` # <- Syntax highlight fail
 		int="$( ${sed} 's|^#\! ?||' <<<"${int}" )"
 		unset sed
 		if [[ \
@@ -318,6 +337,36 @@ function __STDLIB_oneshot_get_bash_version() { # {{{
 
 ###############################################################################
 #
+# stdlib.sh - Validate syntax
+#
+###############################################################################
+
+function __STDLIB_oneshot_syntax_check() { # {{{
+	local script
+	local -Ai seen
+
+	if ! (( STDLIB_HAVE_BASH_4 )) || ! [[ -n "${SHELL:-}" && "${SHELL}" =~ bash$ ]]; then
+		return 0
+	else
+		for script in "${BASH_SOURCE[@]:-}" /usr/local/lib/stdlib.sh; do
+			(( ${seen[\${script}]:-0} )) && continue
+			(( seen[\${script}] = 1 ))
+
+			if ! [[ -s "${script}" ]]; then
+				(( std_DEBUG )) && echo >&2 "DEBUG:  Skipping syntax validation of unreadable script '${script}' ..."
+			else
+				(( std_DEBUG )) && echo >&2 "DEBUG:  Syntax validating script '${script}' ..."
+				"${SHELL}" -n "${script}" || { echo >&2 "FATAL:  Syntax error detected in '${script}'" ; return 1 ; }
+			fi
+		done < <( sort <<<"${BASH_SOURCE[*]:-}" | uniq )
+	fi
+
+	return 0
+} # __STDLIB_oneshot_syntax_check # }}}
+
+
+###############################################################################
+#
 # stdlib.sh - Standard overridable functions - Initialisation & clean-up
 #
 ###############################################################################
@@ -345,7 +394,7 @@ function __STDLIB_API_1_std::cleanup() { # {{{
 	# Remove any STDLIB-generated temporary files and exit.
 
 	for file in "${__STDLIB_OWNED_FILES[@]:-}"; do
-		(( std_INTERNAL_DEBUG )) && output >&2 "DEBUG: ${FUNCNAME##*_} is removing file '${file}'"
+		(( std_INTERNAL_DEBUG )) && output >&2 "DEBUG: ${FUNCNAME[0]##*_} is removing file '${file}'"
 		[[ -n "${file:-}" && -e "${file}" ]] && \
 			rm -f "${file}" >/dev/null 2>&1
 	done
@@ -368,27 +417,31 @@ function __STDLIB_API_1_std::cleanup() { # {{{
 
 # The 'std::cleanup' stub for the appropriate API should be in place by now...
 #
-export __STDLIB_SIGEXIT="$( trap -p EXIT | cut -d"'" -f 2 )"
-export __STDLIB_SIGQUIT="$( trap -p QUIT | cut -d"'" -f 2 )"
-export __STDLIB_SIGTERM="$( trap -p TERM | cut -d"'" -f 2 )"
+declare __STDLIB_SIGINT __STDLIB_SIGTERM __STDLIB_SIGQUIT __STDLIB_SIGEXIT
+__STDLIB_SIGEXIT="$( trap -p EXIT | cut -d"'" -f 2 )"
+__STDLIB_SIGQUIT="$( trap -p QUIT | cut -d"'" -f 2 )"
+__STDLIB_SIGTERM="$( trap -p TERM | cut -d"'" -f 2 )"
 if [[ "${BASH_SOURCE:-${0:-}}" =~ ${std_LIB:-stdlib.sh}$ ]]; then
 	trap std::cleanup EXIT QUIT TERM
 else
-	export __STDLIB_SIGINT="$( trap -p INT | cut -d"'" -f 2 )"
+	__STDLIB_SIGINT="$( trap -p INT | cut -d"'" -f 2 )"
 	trap std::cleanup EXIT INT QUIT TERM
 fi
+export __STDLIB_SIGINT __STDLIB_SIGTERM __STDLIB_SIGQUIT __STDLIB_SIGEXIT
 
 
 # This function should be overridden, or the ${std_USAGE} variable define
 #
 function __STDLIB_API_1_usage-message() { # {{{
-	warn "${FUNCNAME##*_} invoked - please use 'std::usage-message' instead"
+	warn "${FUNCNAME[0]##*_} invoked - please use 'std::usage-message' instead"
 
 	std::usage-message "${@:-}"
 } # __STDLIB_API_1_usage-message # }}}
 
 # Heavyweight compatibility work-around:
-export __STDLIB_usage_message_definition="$( typeset -f usage-message )"
+declare __STDLIB_usage_message_definition
+__STDLIB_usage_message_definition="$( typeset -f usage-message )"
+export __STDLIB_usage_message_definition
 
 # This function should be overridden, or the ${std_USAGE} variable defined
 #
@@ -495,8 +548,9 @@ function __STDLIB_API_1_std::log() { # {{{
 			-t "${NAME}" -- "${message}" >/dev/null 2>&1
 	fi
 
-	local date="$( date -u +'%Y%m%d %R.%S' )"
-	message="${NAME}(${$}) ${date} ${prefix} ${data}"
+	#local date="$( date -u +'%Y%m%d %R.%S' )"
+	#message="${NAME}(${$}) ${date} ${prefix} ${data}"
+	message="${NAME}(${$}) $( date -u +'%Y%m%d %R.%S' ) ${prefix} ${data}"
 
 	# We don't care whether std_LOGFILE exists, but we do care whether it's
 	# set...
@@ -595,6 +649,8 @@ function __STDLIB_oneshot_errno_init() { # {{{
 
 	# Need ability to serialise arrays...
 	#export __STDLIB_errsym __STDLIB_errstr __STDLIB_errtotal STDLIB_HAVE_ERRNO=1
+	# shellcheck disable=SC2034
+	echo >/dev/null "${__STDLIB_errstr[0]}"
 
 	return 0
 } # __STDLIB_oneshot_errno_init # }}}
@@ -636,9 +692,9 @@ function __STDLIB_API_1_errsymbol() { # {{{
 
 	for n in $( seq 0 $(( ${__STDLIB_errtotal:-0} - 1 )) ); do
 		if [[ "${symbol}" == "${__STDLIB_errsym[ ${n} ]}" ]]; then
+			respond "${n}"
 			# 'n' is numeric, and therefore not subject to word-splitting
 			# shellcheck disable=SC2086
-			respond "${n}"
 			return ${n}
 		fi
 	done
@@ -701,7 +757,7 @@ function __STDLIB_API_1_std::garbagecollect() { # {{{
 	done
 
 	if (( std_INTERNAL_DEBUG )); then
-		output >&2 "DEBUG: ${FUNCNAME##*_} updated '__STDLIB_OWNED_FILES' to:"
+		output >&2 "DEBUG: ${FUNCNAME[0]##*_} updated '__STDLIB_OWNED_FILES' to:"
 		for file in "${__STDLIB_OWNED_FILES[@]}"; do
 			output >&2 "${std_TAB}${file}"
 		done
@@ -763,7 +819,7 @@ function __STDLIB_API_1_std::mktemp() { # {{{
 			standard=$__std_mktemp_standard_gnu
 			;;
 		1)
-			[[ -n "${suffix:-}" ]] && debug "${FUNCNAME##*_} Removing" \
+			[[ -n "${suffix:-}" ]] && debug "${FUNCNAME[0]##*_} Removing" \
 				"unsupported 'suffix' option with non-GNU system mktemp"
 			unset suffix
 			message="legacy/BSD mktemp failed"
@@ -867,7 +923,7 @@ function __STDLIB_API_1_std::mktemp() { # {{{
 	fi
 
 	if (( std_INTERNAL_DEBUG )); then
-		output >&2 "DEBUG: ${FUNCNAME##*_} updated '__STDLIB_OWNED_FILES' to:"
+		output >&2 "DEBUG: ${FUNCNAME[0]##*_} updated '__STDLIB_OWNED_FILES' to:"
 		for file in "${__STDLIB_OWNED_FILES[@]}"; do
 			output >&2 "${std_TAB}${file}"
 		done
@@ -895,11 +951,11 @@ function __STDLIB_API_1_std::emktemp() { # {{{
 	fi
 
 	[[ -n "${var:-}" ]] || {
-		error "${FUNCNAME##*_} requires at least one argument"
+		error "${FUNCNAME[0]##*_} requires at least one argument"
 		return 1
 	}
 	if ! [[ "${var}" =~ ^[a-zA-Z_]+[a-zA-Z0-9_]*$ ]]; then
-		error "${FUNCNAME##*_} parameter-name '${var}' is not a valid variable-name"
+		error "${FUNCNAME[0]##*_} parameter-name '${var}' is not a valid variable-name"
 		return 1
 	fi
 
@@ -1136,14 +1192,9 @@ function __STDLIB_API_1_std::formatlist() { # {{{
 
 	if [[ -n "${3:-}" ]]; then
 		item="${1:-}" ; shift
-		respond "${item:-}, $( ${FUNCNAME##*_} "${@:-}" )"
+		respond "${item:-}, $( ${FUNCNAME[0]##*_} "${@:-}" )"
 	elif [[ -n "${2:-}" ]]; then
-		item="$(
-			for item in "${FUNCNAME[@]}"; do
-				echo "${item##*_}"
-			done | grep -c "${FUNCNAME}"
-		)"
-		if (( item > 1 )); then
+		if [[ -n "${FUNCNAME[1]:-}" && "${FUNCNAME[1]##*_}" == "${FUNCNAME[0]##*_}" ]]; then
 			respond "${1:-}, and ${2:-}"
 		else
 			respond "${1:-} and ${2:-}"
@@ -1320,7 +1371,7 @@ function __STDLIB_API_1_std::capture() { # {{{
 			redirect=">/dev/null 2>&1"
 			;;
 		*)
-			error "Invalid parameters: prototype '${FUNCNAME##*_}" \
+			error "Invalid parameters: prototype '${FUNCNAME[0]##*_}" \
 				"<stream> <command> [arguments]', received" \
 				"'<${stream:-}> <${cmd:-}> [${args[*]}]'"
 			return 255
@@ -1381,6 +1432,27 @@ function __STDLIB_API_1_std::silence() { # {{{
 
 ###############################################################################
 #
+# stdlib.sh - Helper functions - Safely split whitespace-separated strings
+#
+###############################################################################
+
+function __STDLIB_API_1_std::wordsplit() { # {{{
+	local -a string="${*:-}" words
+	local word
+
+	[[ -n "${string:-}" ]] || return 1
+
+	read -r -d '' -a words <<<"${string}" # ` # <- Syntax highlight fail
+	for word in "${words[@]}"; do
+		respond "${word}"
+	done
+
+	return 0
+} # __STDLIB_API_1_std::wordsplit # }}}
+
+
+###############################################################################
+#
 # stdlib.sh - Helper functions - Process sections of Windows-style .ini files
 #
 ###############################################################################
@@ -1419,7 +1491,7 @@ function  __STDLIB_API_1_std::http::squash() { # {{{
 	local -i code=${1:-} ; shift
 	local -i result=0
 
-	debug "${FUNCNAME##*_} received HTTP code '${code:-}'"
+	debug "${FUNCNAME[0]##*_} received HTTP code '${code:-}'"
 
 	if (( ( code > 99 && code < 400 ) || ( code > 499 && code < 600 ) )); then
 		(( code > 102 && code < 200 )) && warn "Attempting to squash non-RFC2616 Status Code '${code}'"
@@ -1437,7 +1509,7 @@ function  __STDLIB_API_1_std::http::squash() { # {{{
 		error "Cannot squash non-RFC2616 Status Code '${code}'"
 	fi
 
-	debug "${FUNCNAME##*_} returned shell code ${result}"
+	debug "${FUNCNAME[0]##*_} returned shell code ${result}"
 
 	return ${result}
 } # __STDLIB_API_1_std::http::squash # }}}
@@ -1447,7 +1519,7 @@ function __STDLIB_API_1_std::http::expand() { # {{{
 	local -i result=0
 	local -i rc=0
 
-	debug "${FUNCNAME##*_} received shell code ${code:-}"
+	debug "${FUNCNAME[0]##*_} received shell code ${code:-}"
 
 	if (( 13 == code )); then
 		result=226
@@ -1473,7 +1545,7 @@ function __STDLIB_API_1_std::http::expand() { # {{{
 	(( result > 505 && result < 600 )) && warn "Attempting to expand non-RFC2616 shell code '${code}'"
 	(( result > 599 )) && { warn "Attempting to expand invalid shell code '${code}'"; result=0; rc=1; }
 
-	debug "${FUNCNAME##*_} returned HTTP code '${result}': ${rc}"
+	debug "${FUNCNAME[0]##*_} returned HTTP code '${result}': ${rc}"
 
 	(( rc )) || respond ${result}
 
@@ -1504,7 +1576,7 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 	fi
 
 	(( STDLIB_HAVE_BASH_4 )) || {
-		(( std_DEBUG )) && error "${FUNCNAME##*_} requires bash-4 associative arrays"
+		(( std_DEBUG )) && error "${FUNCNAME[0]##*_} requires bash-4 associative arrays"
 		std_PARSEARGS_parsed=0
 		respond "std_PARSEARGS_parsed=${std_PARSEARGS_parsed:-0}"
 		return 1
@@ -1574,7 +1646,7 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 					if [[ -n "${1:-}" && "${1}" =~ ^[a-zA-Z_]+[a-zA-Z0-9_]*$ ]]; then
 						unassigned="${1}" ; shift
 					else
-						(( std_DEBUG )) && error "${FUNCNAME##*_}: Specified name '${1:-}' is not a valid variable-name"
+						(( std_DEBUG )) && error "${FUNCNAME[0]##*_}: Specified name '${1:-}' is not a valid variable-name"
 						std_PARSEARGS_parsed=0
 						respond "std_PARSEARGS_parsed=${std_PARSEARGS_parsed:-0}"
 						return 1
@@ -1584,7 +1656,7 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 					break
 					;;
 				*)
-					(( std_DEBUG )) && error "${FUNCNAME##*_}: Unknown option '${current}'"
+					(( std_DEBUG )) && error "${FUNCNAME[0]##*_}: Unknown option '${current}'"
 					std_PARSEARGS_parsed=0
 					respond "std_PARSEARGS_parsed=${std_PARSEARGS_parsed:-0}"
 					return 1
@@ -1605,14 +1677,14 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 			# Not necessarily IEEE 1003.1-2001, but according to
 			# bash source...
 			if ! [[ "${arg}" =~ ^[a-zA-Z_]+[a-zA-Z0-9_]*$ ]]; then
-				(( std_DEBUG )) && error "${FUNCNAME##*_}: Provided name '${arg:-}' is not a valid variable-name"
+				(( std_DEBUG )) && error "${FUNCNAME[0]##*_}: Provided name '${arg:-}' is not a valid variable-name"
 				std_PARSEARGS_parsed=0
 				respond "std_PARSEARGS_parsed=${std_PARSEARGS_parsed:-0}"
 				return 1
 			fi
 		else
 			if [[ -z "${arg:-}" ]]; then
-				warn "${FUNCNAME##*_}: Dropping argument '${current}'"
+				warn "${FUNCNAME[0]##*_}: Dropping argument '${current}'"
 				continue
 			fi
 
@@ -1861,7 +1933,7 @@ function http::test() { # {{{
 	local -i ic=0 rc=0 code=0 result=0
 
 	(( STDLIB_HAVE_BASH_4 )) || {
-		(( std_DEBUG )) && error "${FUNCNAME##*_} requires bash-4 associative arrays"
+		(( std_DEBUG )) && error "${FUNCNAME[0]##*_} requires bash-4 associative arrays"
 		return 1
 	}
 
@@ -1996,6 +2068,9 @@ function __STDLIB_API_1_std::sentinel() { # {{{
 __STDLIB_oneshot_get_bash_version
 unset __STDLIB_oneshot_get_bash_version
 
+__STDLIB_oneshot_syntax_check || exit 1
+unset __STDLIB_oneshot_syntax_check
+
 if [[ -n "${STDLIB_WANT_ERRNO:-}" ]] && (( !( STDLIB_HAVE_ERRNO ) )); then
 	# Initialise errno functions...
 	__STDLIB_oneshot_errno_init
@@ -2062,7 +2137,7 @@ echo ' ' | eval "grep -Eq '${s}'" || s='[[:space:]]'
 # but instead uses '-E'.  It still can't grok '\s' for [[:space:]], though...
 # Worse, MacOS/BSD sed doesn't understand '\+', so extended mode is required.
 sed='sed -r'
-${sed} '' >/dev/null 2>&1 <<<'' || sed='sed -E'
+${sed} '' >/dev/null 2>&1 <<<'' || sed='sed -E' # ` # <- Syntax highlight fail
 [[ "$( echo ' ' | ${sed} 's/\s/x/' )" == 'x' ]] || s='[[:space:]]'
 
 # Create interface for functions of the appropriate API...
@@ -2070,7 +2145,7 @@ ${sed} '' >/dev/null 2>&1 <<<'' || sed='sed -E'
 # N.B.: Avoid pipes to maintain scope of new definitions.
 #
 declare -a __STDLIB_functionlist
-while read fapi; do
+while read -r fapi; do
 
 	# Export all API versions, so that explicit implmentations are still
 	# available...
@@ -2084,6 +2159,7 @@ while read fapi; do
 
 			# Make functions available to child shells...
 			#
+			# shellcheck disable=SC2163
 			export -f "${fapi}"
 
 			if echo "${fapi}" | grep -q "^__STDLIB_API_${__STDLIB_API}_"; then
@@ -2093,6 +2169,7 @@ while read fapi; do
 
 					# Make functions available to child shells...
 					#
+					# shellcheck disable=SC2163
 					export -f "${fname}"
 
 					# Clear the variable, not the function definition...
@@ -2147,6 +2224,7 @@ if [[ -r "${std_LIBPATH}"/memcached.sh ]]; then
 	if [[ -n "${STDLIB_WANT_MEMCACHED:-}" ]] \
 		&& (( !( STDLIB_HAVE_MEMCACHED ) ))
 	then
+		# shellcheck source=/usr/local/lib/memcached.sh disable=SC1091
 		source "${std_LIBPATH}"/memcached.sh \
 			&& export STDLIB_HAVE_MEMCACHED=1
 	fi
