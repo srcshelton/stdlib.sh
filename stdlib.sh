@@ -1,45 +1,23 @@
-# Copyright 2013-2015 Stuart Shelton
+# Copyright 2013-2016 Stuart Shelton
 # Distributed under the terms of the GNU General Public License v2
 # 
-# stdlib.sh standardised shared functions...
-
-# Only load stdlib once, and provide support for loading stdlib from bashrc to
-# reduce startup times...
-#
-if [[ "$( type -t std::sentinel 2>&1 )" != "function" ]]; then
-if [[ -n "${STDLIB_HAVE_STDLIB:-}" ]]; then # {{{
-	if [[ -z "${NAME:-}" ]]; then
-		if [[ -z "${std_LIB:-}" ]]; then
-			std_LIB="${std_LIB:-stdlib.sh}"
-		fi
-		NAME="$( basename -- "${0:-${std_LIB}}" )"
-		[[ "${NAME:-}" == "$( basename -- "${SHELL:-bash}" )" ]] && \
-			NAME="${std_LIB}"
-	fi
-	echo >&2
-	echo >&2 "WARN:   ${NAME} variables have been imported, but function definitions are"
-	echo >&2 "WARN:   missing - parent shell may be running in restricted, setuid, or"
-	echo >&2 "WARN:   privileged mode."
-	echo >&2
-	echo >&2 "NOTICE: Re-executing ${NAME} to re-generate all functions."
-	echo >&2
-fi # }}}
-
+# stdlib.sh standardised shared shell functions...
 
 # Pull this file into external scripts as follows:
 #
 cat >/dev/null <<EOC
 # --- CUT HERE ---
+
 # stdlib.sh should be in /usr/local/lib/stdlib.sh, which can be found as
 # follows by scripts located in /usr/local/{,s}bin/...
-std_LIB="stdlib.sh"
-for std_LIBPATH in \
-	"$( dirname -- "${BASH_SOURCE:-${0:-.}}" )" \
-	"." \
-	"$( dirname -- "$( type -pf "${std_LIB}" 2>/dev/null )" )" \
-	"$( dirname -- "${BASH_SOURCE:-${0:-.}}" )/../lib" \
-	"/usr/local/lib" \
-	 ${FPATH:+${FPATH//:/ }} \
+declare std_LIB="stdlib.sh"
+for std_LIBPATH in							\
+	"$( dirname -- "${BASH_SOURCE:-${0:-.}}" )"			\
+	"."								\
+	"$( dirname -- "$( type -pf "${std_LIB}" 2>/dev/null )" )"	\
+	"$( dirname -- "${BASH_SOURCE:-${0:-.}}" )/../lib"		\
+	"/usr/local/lib"						\
+	 ${FPATH:+${FPATH//:/ }}					\
 	 ${PATH:+${PATH//:/ }}
 do
 	if [[ -r "${std_LIBPATH}/${std_LIB}" ]]; then
@@ -50,8 +28,40 @@ done
 	echo >&2 "FATAL:  Unable to source ${std_LIB} functions"
 	exit 1
 }
+
 # --- CUT HERE ---
 EOC
+
+
+# Only load stdlib once, and provide support for loading stdlib from bashrc to
+# reduce startup times...
+#
+if [[ "$( type -t std::sentinel 2>&1 )" == "function" ]]; then
+	# We've already initialised, and all funcions are (assumed to be)
+	# present.
+	:
+else
+if [[ -n "${STDLIB_HAVE_STDLIB:-}" ]]; then # {{{
+	if [[ -z "${NAME:-}" ]]; then
+
+		# shellcheck disable=SC2031
+
+		if [[ -z "${std_LIB:-}" ]]; then
+			std_LIB="${std_LIB:-stdlib.sh}"
+		fi
+		NAME="$( basename -- "${0:-${std_LIB}}" )"
+		[[ "${NAME:-}" == "$( basename -- "${SHELL:-bash}" )" ]] && \
+			NAME="${std_LIB}"
+	fi
+	echo >&2
+	echo >&2 "WARN:   ${NAME} variables have been imported, but function definitions are"
+	echo >&2 "WARN:   missing - parent shell may be running in restricted, setuid, or"
+	echo >&2 "WARN:   in privileged mode."
+	echo >&2
+	echo >&2 "NOTICE: Re-executing ${NAME} to re-generate all functions."
+	echo >&2
+fi # }}}
+
 
 # {{{
 
@@ -66,8 +76,10 @@ EOC
                             # functions
 #export std_RELEASE="1.4.6" # Fix issues identified by shellcheck.net, and
                             # improve MacOS compatibility
-export  std_RELEASE="1.4.7" # Fix warnings identified by shellcheck.net, add
+#export std_RELEASE="1.4.7" # Fix warnings identified by shellcheck.net, add
                             # std::wordsplit
+export  std_RELEASE="1.5.0" # Add std::inherit, finally make errno functions
+                            # work!  Set std_ERRNO where appropriate
 readonly std_RELEASE
 
 
@@ -123,7 +135,6 @@ EOC
 #
 # Externally set control-variables:
 #
-# STDLIB_WANT_ERRNO	- Load errno-like functions;
 # STDLIB_WANT_MEMCACHED	- Load native memcached functions;
 # STDLIB_API		- Specify the stdlib API to adhere to.
 #
@@ -171,6 +182,7 @@ shopt -qs failglob
 #
 function output() {
 	local flags="-e"
+
 	[[ " ${1:-} " == " -n " ]] && { flags+="n" ; shift ; }
 	[[ -n "${*:-}" ]] && echo ${flags} "${*}"
 } # output
@@ -263,6 +275,8 @@ function __STDLIB_oneshot_get_bash_version() { # {{{
 			STDLIB_HAVE_BASH_4=0
 		fi
 		export STDLIB_HAVE_BASH_4
+
+		std_ERRNO=0
 		return ${STDLIB_HAVE_BASH_4}
 	fi
 
@@ -331,6 +345,7 @@ function __STDLIB_oneshot_get_bash_version() { # {{{
 
 	export STDLIB_HAVE_BASH_4
 
+	std_ERRNO=0
 	return ${STDLIB_HAVE_BASH_4}
 } # __STDLIB_oneshot_get_bash_version # }}}
 
@@ -346,21 +361,28 @@ function __STDLIB_oneshot_syntax_check() { # {{{
 	local -Ai seen
 
 	if ! (( STDLIB_HAVE_BASH_4 )) || ! [[ -n "${SHELL:-}" && "${SHELL}" =~ bash$ ]]; then
+		std_ERRNO=$( errsymbol ENOEXE )
 		return 0
 	else
-		for script in "${BASH_SOURCE[@]:-}" /usr/local/lib/stdlib.sh; do
-			(( ${seen[\${script}]:-0} )) && continue
-			(( seen[\${script}] = 1 ))
+		while read -r script; do
+			(( ${seen[${script}]:-0} )) && continue
+			seen[${script}]=1
 
 			if ! [[ -s "${script}" ]]; then
 				(( std_DEBUG )) && echo >&2 "DEBUG:  Skipping syntax validation of unreadable script '${script}' ..."
 			else
 				(( std_DEBUG )) && echo >&2 "DEBUG:  Syntax validating script '${script}' ..."
-				"${SHELL}" -n "${script}" || { echo >&2 "FATAL:  Syntax error detected in '${script}'" ; return 1 ; }
+				"${SHELL}" -n "${script}" || {
+					echo >&2 "FATAL:  Syntax error detected in '${script}'"
+
+					std_ERRNO=5
+					return 1
+				}
 			fi
-		done < <( sort <<<"${BASH_SOURCE[*]:-}" | uniq )
+		done < <( printf '%s\n' "${BASH_SOURCE[@]:-}" /usr/local/lib/stdlib.sh | sort | uniq )
 	fi
 
+	std_ERRNO=0
 	return 0
 } # __STDLIB_oneshot_syntax_check # }}}
 
@@ -456,6 +478,8 @@ Further instructions here, e.g.
 	-f : Process the specified <filename>
 	-h : Show this help information
 END
+
+	std_ERRNO=0
 	return 0
 } # __STDLIB_API_1_std::usage-message # }}}
 
@@ -496,7 +520,10 @@ function __STDLIB_API_1_std::wrap() { # {{{
 	local prefix="${1:-}" ; shift
 	local text="${*:-}"
 
-	[[ -n "${text:-}" ]] || return 1
+	[[ -n "${text:-}" ]] || {
+		std_ERRNO=$( errsymbol EARGS )
+		return 1
+	}
 
 	# N.B.: It may be necessary to 'export COLUMNS' before this
 	#       works - this variable isn't exported to scripts by
@@ -522,6 +549,7 @@ function __STDLIB_API_1_std::wrap() { # {{{
 		fi
 	fi
 
+	std_ERRNO=0
 	return 0
 } # __STDLIB_API_1_std::wrap # }}}
 
@@ -536,7 +564,10 @@ function __STDLIB_API_1_std::log() { # {{{
 	if [[ -z "${data:-}" ]]; then
 		data="$( cat - )"
 	fi
-	[[ -n "${data:-}" ]] || return 1
+	[[ -n "${data:-}" ]] || {
+		std_ERRNO=$( errsymbol EARGS )
+		return 1
+	}
 
 	data="$( sed 's/\r//' <<<"${data}" )"
 
@@ -561,6 +592,7 @@ function __STDLIB_API_1_std::log() { # {{{
 		__STDLIB_API_1_std::wrap "${prefix}" "${data}"
 	fi
 
+	# Don't stomp on std_ERRNO
 	return $(( ! std_DEBUG ))
 } # __STDLIB_API_1_std::log # }}}
 
@@ -574,6 +606,7 @@ function __STDLIB_API_1_die() { # {{{
 	[[ -n "${*:-}" ]] && std_DEBUG=1 __STDLIB_API_1_std::log >&2 "FATAL: " "${*}"
 	__STDLIB_API_1_std::cleanup 1
 
+	# Don't stomp on std_ERRNO
 	return 1
 } # __STDLIB_API_1_die # }}}
 
@@ -582,6 +615,7 @@ function __STDLIB_API_1_die() { # {{{
 function __STDLIB_API_1_error() { # {{{
 	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "ERROR: " "${*:-Unspecified error}"
 
+	# Don't stomp on std_ERRNO
 	return 1
 } # __STDLIB_API_1_error # }}}
 
@@ -590,6 +624,7 @@ function __STDLIB_API_1_error() { # {{{
 function __STDLIB_API_1_warn() { # {{{
 	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "WARN:  " "${*:-Unspecified warning}"
 
+	# Don't stomp on std_ERRNO
 	return 1
 } # __STDLIB_API_1_warn # }}}
 
@@ -599,6 +634,7 @@ function __STDLIB_API_1_warn() { # {{{
 function __STDLIB_API_1_note() { # {{{
 	std_DEBUG=1 __STDLIB_API_1_std::log "NOTICE:" "${*:-Unspecified notice}"
 
+	# Don't stomp on std_ERRNO
 	return 0
 } # __STDLIB_API_1_note # }}}
 
@@ -611,6 +647,7 @@ function __STDLIB_API_1_notice() { # {{{
 function __STDLIB_API_1_info() { # {{{
 	std_DEBUG=1 __STDLIB_API_1_std::log "INFO:  " "${*:-Unspecified message}"
 
+	# Don't stomp on std_ERRNO
 	return 0
 } # __STDLIB_API_1_info # }}}
 
@@ -619,6 +656,7 @@ function __STDLIB_API_1_info() { # {{{
 function __STDLIB_API_1_debug() { # {{{
 	(( std_DEBUG )) && __STDLIB_API_1_std::log >&2 "DEBUG: " "${*:-Unspecified message}"
 
+	# Don't stomp on std_ERRNO
 	return $(( ! std_DEBUG ))
 } # __STDLIB_API_1_debug # }}}
 
@@ -630,103 +668,120 @@ function __STDLIB_API_1_debug() { # {{{
 ###############################################################################
 
 function __STDLIB_oneshot_errno_init() { # {{{
-	local count=1
+	local count=0
 
-	declare -a __STDLIB_errsym __STDLIB_errstr
+	# This function must be called, once, before the errno functions can be
+	# used.
 
-	# TODO: This should really be sourced from an external config file...
+	declare -agx __STDLIB_errsym __STDLIB_errstr
+
+	# As per http://tldp.org/LDP/abs/html/exitcodes.html, it would be
+	# advantageous if bash code could avoid return values 1, 2, 126-192,
+	# and 255.  /usr/include/sysexits.h now defines values in the range 64
+	# to 78 - although, as referenced in a footnote, there is no reason to
+	# fit around these values since there is no intersection between the
+	# code these values apply to and bash scripts.  Additionally, avoiding
+	# return codes 1 and 2 is problematic for interoperability with
+	# existing code.  Avoiding return codes which are not positive integers
+	# appears to be problematic for Java prorgammers ;)
 	#
-	__STDLIB_errsym[ ${count} ]="ENOTFOUND"	; __STDLIB_errstr[ ${count} ]="Parameter value not found"	; (( count ++ )) ;
-	__STDLIB_errsym[ ${count} ]="EENV"	; __STDLIB_errstr[ ${count} ]="Invalid environment"		; (( count ++ )) ;
-	__STDLIB_errsym[ ${count} ]="EARGS"	; __STDLIB_errstr[ ${count} ]="Invalid arguments"		; (( count ++ )) ;
-	__STDLIB_errsym[ ${count} ]="ENOEXE"	; __STDLIB_errstr[ ${count} ]="Required executable not found"	; (( count ++ )) ;
+	# It is reasonable to return 1 and set a descriptive/diagnostic
+	# std_ERRNO on failure.
+
+	# TODO: This should really be sourced from an external config file.
+	#
+
+	# 0 is not a real error code, but it is useful to have a placeholder
+	# here...
+	__STDLIB_errsym[0]="ENOERROR"		; __STDLIB_errstr[0]="Operation successful"			; (( count ++ )) ;
+
+	# Named error conditions - these should always be referred to by symbol
+	# rather than by number (other than in the internal errno functions,
+	# which can't rely on all values below being fully initialised).
+	__STDLIB_errsym[1]="ENOTFOUND"		; __STDLIB_errstr[1]="Parameter value not found"		; (( count ++ )) ;
+	__STDLIB_errsym[2]="EENV"		; __STDLIB_errstr[2]="Invalid environment"			; (( count ++ )) ;
+	__STDLIB_errsym[3]="EARGS"		; __STDLIB_errstr[3]="Invalid arguments"			; (( count ++ )) ;
+	__STDLIB_errsym[4]="ENOEXE"		; __STDLIB_errstr[4]="Required executable not found"		; (( count ++ )) ;
+	__STDLIB_errsym[5]="ESYNTAX"		; __STDLIB_errstr[5]="Syntax error"				; (( count ++ )) ;
+	__STDLIB_errsym[6]="EACCESS"		; __STDLIB_errstr[6]="File access denied"			; (( count ++ )) ;
 
 	# These should appear, in order, last:
 	__STDLIB_errsym[ ${count} ]="EERROR"	; __STDLIB_errstr[ ${count} ]="Undefined error"			; (( count ++ )) ;
 	__STDLIB_errsym[ ${count} ]="ENOTSET"	; __STDLIB_errstr[ ${count} ]="Logic failure: errno unset"	; # Final item, no increment
 
-	declare -i __STDLIB_errtotal="${count}"
-
-	# Need ability to serialise arrays...
-	#export __STDLIB_errsym __STDLIB_errstr __STDLIB_errtotal STDLIB_HAVE_ERRNO=1
-	# shellcheck disable=SC2034
-	echo >/dev/null "${__STDLIB_errstr[0]}"
+	declare -gix __STDLIB_errtotal="${count}" std_ERRNO=0 STDLIB_HAVE_ERRNO=1
 
 	return 0
 } # __STDLIB_oneshot_errno_init # }}}
 
 function __STDLIB_API_1_symerror() { # {{{
-	local err="${1:-${std_ERRNO:-}}"
+	local -i err="${1:-${std_ERRNO:-0}}"
 
-	(( STDLIB_HAVE_ERRNO )) || {
+	# Given an error number, provide the associated symbolic error name.
+
+	if (( __STDLIB_errtotal < 1 || ! STDLIB_HAVE_ERRNO )); then
+		# FIXME: Obsolete
 		error "errno not initialised - please re-import ${std_LIB}" \
 			"with 'STDLIB_WANT_ERRNO' set"
 		return 1
-	}
+	fi
 
-	if (( err > 0 && err < ${__STDLIB_errtotal:-0} )); then
+	if (( err >= 0 && err <= ${__STDLIB_errtotal:-0} )) && [[ -n "${__STDLIB_errsym[ ${err} ]:-}" ]]; then
 		respond "${__STDLIB_errsym[ ${err} ]}"
 
 		return 0
-	else
-		std_ERRNO=1
-
-		return 1
 	fi
 
-	# Unreachable
-	return 255
+	std_ERRNO=1 # instead use 'std_ERRNO="$( errsymbol ENOTFOUND )"'
+	return 1
 } # __STDLIB_API_1_symerror # }}}
 
 function __STDLIB_API_1_errsymbol() { # {{{
 	local symbol="${1:-}"
 	local -i n
 
-	(( STDLIB_HAVE_ERRNO )) || {
+	# Given a symbolic error name, provide the error number (to set
+	# std_ERRNO, for example).
+
+	if (( __STDLIB_errtotal < 1 || ! STDLIB_HAVE_ERRNO )); then
+		# FIXME: Obsolete
 		error "errno not initialised - please re-import ${std_LIB}" \
 			"with 'STDLIB_WANT_ERRNO' set"
 		return 1
-	}
+	fi
+	if [[ -z "${symbol:-}" ]]; then
+		std_ERRNO=3 # instead use 'std_ERRNO="$( errsymbol EARGS )"'
+		return 1
+	fi
 
-	(( 0 == ${__STDLIB_errtotal:-0} )) && return 0
-
-	for n in $( seq 0 $(( ${__STDLIB_errtotal:-0} - 1 )) ); do
-		if [[ "${symbol}" == "${__STDLIB_errsym[ ${n} ]}" ]]; then
+	for n in $( seq 0 $(( ${__STDLIB_errtotal:-0} )) ); do
+		if [[ "${symbol}" == "${__STDLIB_errsym[ ${n} ]:-}" ]]; then
 			respond "${n}"
-			# 'n' is numeric, and therefore not subject to word-splitting
-			# shellcheck disable=SC2086
-			return ${n}
+
+			return 0
 		fi
 	done
 
-	return 0
+	std_ERRNO=1 # instead use 'std_ERRNO="$( errsymbol ENOTFOUND )"'
+	return 1
 } # __STDLIB_API_1_errsymbol # }}}
 
 function __STDLIB_API_1_strerror() { # {{{
 	local err="${1:-${std_ERRNO:-}}" ; shift
-	local msg="Unknown error" rc=1
+	local msg="Unknown error number" rc=1
 
-	(( STDLIB_HAVE_ERRNO )) || {
+	# Given an error number, provide the associated error string.
+
+	if (( __STDLIB_errtotal < 1 || ! STDLIB_HAVE_ERRNO )); then
+		# FIXME: Obsolete
 		error "errno not initialised - please re-import ${std_LIB}" \
 			"with 'STDLIB_WANT_ERRNO' set"
 		return 1
-	}
+	fi
 
-	if [[ -z "${err:-}" ]]; then
-		:
-	#elif ! grep -q '^[0-9]\+$' <<<"${err}"; then
-	elif ! echo "${err}" | grep -q '^[0-9]\+$'; then
-		:
-	else
-		case "${err}" in
-			0)
-				msg=""
-				rc=0
-				;;
-			*)
-				msg="Unknown error ${err}"
-				;;
-		esac
+	if [[ "${err:-}" =~ ^[0-9]+$ ]] && [[ -n "${__STDLIB_errstr[ ${err} ]:-}" ]]; then
+		msg="${__STDLIB_errstr[ ${err} ]}"
+		rc=0
 	fi
 
 	respond "${msg}"
@@ -742,18 +797,22 @@ function __STDLIB_API_1_strerror() { # {{{
 ###############################################################################
 
 function __STDLIB_API_1_std::garbagecollect() { # {{{
-	local file rc
+	local file="" rc=0
 
 	# Add an additional file to the list of files to be removed when
 	# std::cleanup is invoked.
 	# This can be used to work-around the use of std::mktemp in a
 	# sub-shell.
 
+	std_ERRNO=0
 	for file in "${@:-}"; do
-		[[ -e "${file}" ]] && {
+		if [[ -e "${file}" ]]; then
 			__STDLIB_OWNED_FILES+=( "${file}" )
 			rc=${rc:-0}
-		} || rc=1
+		else
+			std_ERRNO=$( errsymbol ENOTFOUND )
+			rc=1
+		fi
 	done
 
 	if (( std_INTERNAL_DEBUG )); then
@@ -764,6 +823,7 @@ function __STDLIB_API_1_std::garbagecollect() { # {{{
 		output >&2
 	fi
 
+	# std_ERRNO set above
 	return ${rc:-1}
 } # __STDLIB_API_1_std::garbagecollect # }}}
 
@@ -909,6 +969,8 @@ function __STDLIB_API_1_std::mktemp() { # {{{
 		__std_NEWFILES+=(
 			"$( eval "mktemp ${opts}${name}\"" || {
 				error "${message}"
+
+				std_ERRNO=$( errsymbol EERROR )
 				return 1
 			} )"
 		)
@@ -930,6 +992,7 @@ function __STDLIB_API_1_std::mktemp() { # {{{
 		output >&2
 	fi
 
+	std_ERRNO=0
 	return 0
 } # __STDLIB_API_1_std::mktemp # }}}
 
@@ -952,10 +1015,14 @@ function __STDLIB_API_1_std::emktemp() { # {{{
 
 	[[ -n "${var:-}" ]] || {
 		error "${FUNCNAME[0]##*_} requires at least one argument"
+
+		std_ERRNO=$( errsymbol EARGS )
 		return 1
 	}
 	if ! [[ "${var}" =~ ^[a-zA-Z_]+[a-zA-Z0-9_]*$ ]]; then
 		error "${FUNCNAME[0]##*_} parameter-name '${var}' is not a valid variable-name"
+
+		std_ERRNO=$( errsymbol EARGS )
 		return 1
 	fi
 
@@ -977,10 +1044,13 @@ function __STDLIB_API_1_std::emktemp() { # {{{
 
 	local file rc
 	local -a files result
+	std_ERRNO=0
+
 	files=( $( eval "__STDLIB_API_1_std::mktemp ${tmpdir:+-tmpdir "${tmpdir}"} ${suffix:+-suffix "${suffix}"} ${*:-${$}}" ) )
 	rc=${?}
 
 	if (( rc )); then
+		# std_ERRNO set by __STDLIB_API_1_std::mktemp
 		return ${rc}
 	else
 		for file in "${files[@]:-}"; do
@@ -995,6 +1065,7 @@ function __STDLIB_API_1_std::emktemp() { # {{{
 		rc=1
 	fi
 
+	# std_ERRNO set by __STDLIB_API_1_std::garbagecollect
 	return ${rc}
 } # __STDLIB_API_1_std::emktemp # }}}
 
@@ -1053,7 +1124,7 @@ set -o xtrace
 		# then we apparently need to quote it later(?)
 		#
 		# TODO: What's magic about '~'?
-		#       Is it a sole special-case for referencing
+		#       Is it solely a special-case for referencing
 		#       home-directories?
 		#
 		unset std_push_add_quote
@@ -1115,6 +1186,8 @@ set -o xtrace
 set +o xtrace
 
 echo "Debug: std_push_var='${std_push_var}', value=|$( eval echo "\"\${${std_push_var}:-}\"" )|, rc=${rc}"
+	std_ERRNO=0
+	(( rc )) && std_ERRNO=$( errsymbol EERROR )
 	return ${rc}
 } # __STDLIB_API_1_std::push # }}}
 
@@ -1128,13 +1201,16 @@ echo "Debug: std_push_var='${std_push_var}', value=|$( eval echo "\"\${${std_pus
 function __STDLIB_API_1_std::readlink() { # {{{
 	local file="${1:-}" ; shift
 
-	[[ -n "${file:-}" ]] || return 1
+	[[ -n "${file:-}" ]] || {
+		std_ERRNO=$( errsymbol EARGS )
+		return 1
+	}
 
 	# Find the target of a symlink, in circumstances where GNU readlink is
 	# not available
 
-	# TODO: Non-trivial implementation which is actually usable on, for
-	#       example, Mac OS...
+	# FIXME: Non-trivial implementation which is actually usable on, for
+	#        example, Mac OS...
 	#
 	if [[ -L "${file}" ]]; then
 		#readlink "${file}" # <- Will actually, in a fairly consistent
@@ -1144,18 +1220,100 @@ function __STDLIB_API_1_std::readlink() { # {{{
 		# 'stat -F' (which doesn't work with GNU userland) whilst
 		# GNU tools don't work on BSD/MacOS...
 		# shellcheck disable=SC2012
-		ls -l "${file}" | sed 's/^.* -> //'
+		respond "$( ls -l "${file}" | sed 's/^.* -> //' )"
 
+		std_ERRNO=0
 		return 0
 	else
 		respond "${file}"
 
+		std_ERRNO=0
 		return 1
 	fi
 
 	# Unreachable
+	std_ERRNO=$( errsymbol EERROR )
 	return 255
 } # __STDLIB_API_1_std::readlink # }}}
+
+
+###############################################################################
+#
+# stdlib.sh - Standard functions - Document the use of global variables
+#
+###############################################################################
+
+function __STDLIB_API_1_std::inherit() { # {{{
+	local var item parent name
+	local -i skip=0 exported=0
+	local -a val=() flags=()
+
+	# Usage:
+	#
+	# eval std::inherit -ex MYVAR 0
+	#
+	# Explicitly states that the current function will make use of global
+	# variable MYVAR, and initialise MYVAR to contain the optional second
+	# argument if unset.
+	# The -e flag specifies that MYVAR must be exported rather than simply
+	# set, and the -x flag specifies that MYVAR will be exported if it
+	# does not exist.
+	# Other than -e, the valid flags are those used by declare/typeset.
+
+	for item in "${@:-}"; do
+		if [[ "${item}" == "--" ]]; then
+			skip=1
+		elif (( ! skip )) && [[ "${item}" =~ ^-[eaAilnrtux]+$|^\+[ilntux]+$ ]]; then
+			if [[ "${item}" =~ e ]]; then
+				exported=1
+				item="${item//e}"
+			fi
+			flags+=( "${item}" )
+		elif [[ -z "${val[*]}" ]]; then
+			var="${item}"
+		else
+			val+=( "${item}" )
+		fi
+	done
+
+	[[ -n "${var:-}" ]] || {
+		std_ERRNO=$( errsymbol EARGS )
+		return 1
+	}
+
+	if [[ -n "${FUNCNAME[0]:-}" ]]; then
+		name="${FUNCNAME[0]/__STDLIB_API_[0-9]_}"
+		[[ -n "${name:-}" ]] || {
+			std_ERRNO=$( errsymbol EENV )
+			return 1
+		}
+
+		parent="${FUNCNAME[1]:-}"
+		[[ "${parent:-}" == "${name:-}" ]] && parent="${FUNCNAME[2]:-}"
+	fi
+	if [[ -z "${parent:-}" ]]; then
+		output >&2 "${SHELL:-bash}: ${name:-std::inherit}: can only be used in a function"
+
+		std_ERRNO=$( errsymbol ESYNTAX )
+		return 1
+	fi
+
+	if (( exported )) && env | grep -q "^${var}="; then
+		:
+	elif (( ! exported )) && [[ -n "${var}" ]]; then
+		:
+	else
+		[[ -n "${val[*]:-}" ]] || {
+			std_ERRNO=$( errsymbol ENOTFOUND )
+			return 1
+		}
+
+		respond "declare ${flags[*]:-} ${skip:+--} ${var}=$( declare -p val | cut -d'=' -f 2- )"
+	fi
+
+	std_ERRNO=0
+	return 0
+} # inherit # }}}
 
 
 ###############################################################################
@@ -1175,9 +1333,20 @@ function __STDLIB_API_1_std::define() { # {{{
 	# ... $( and this won't be executed )!
 	# EOF
 
-	[[ -n "${var:-}" ]] || return 1
+	[[ -n "${var:-}" ]] || {
+		std_ERRNO=$( errsymbol EARGS )
+		return 1
+	}
 
-	IFS=$'\n' read -r -d '' "${var}" || true
+	IFS=$'\n' read -r -d '' "${var}"
+
+	std_ERRNO=0
+
+	if [[ -z "${var:-}" ]]; then
+		# Don't change std_ERRNO
+		return 1
+	fi
+	return 0
 } # __STDLIB_API_1_std::define # }}}
 
 
@@ -1203,6 +1372,7 @@ function __STDLIB_API_1_std::formatlist() { # {{{
 		respond "${*:-}"
 	fi
 
+	std_ERRNO=0
 	return 0
 } # __STDLIB_API_1_std::formatlist # }}}
 
@@ -1218,11 +1388,17 @@ function __STDLIB_API_1_std::vcmp() { # {{{
 
 	# Does system 'sort' have version-sort capability (again, CentOS/Red
 	# Hat seem to lose out here...)
-	sort --version-sort </dev/null || return 254
+	sort --version-sort </dev/null || {
+		std_ERRNO=$( errsymbol ENOEXE )
+		return 1
+	}
 
 	if ! (( 3 == ${#@} )); then
+		std_ERRNO=$( errsymbol EARGS )
 		return 1
 	fi
+
+	std_ERRNO=0
 
 	vone="${1:-}"
 	op="${2:-}"
@@ -1278,6 +1454,7 @@ function __STDLIB_API_1_std::vcmp() { # {{{
 	esac
 
 	# Unreachable
+	std_ERRNO=$( errsymbol EERROR )
 	return 255
 } # __STDLIB_API_1_std::vcmp # }}}
 
@@ -1321,15 +1498,25 @@ function __STDLIB_API_1_std::requires() { # {{{
 
 	# If we're not outputting a path, we can only return an exit status for
 	# one binary at once...
-	(( !( quiet ) && ${#@} > 1 )) && die "Cannot return paths for multiple binaries"
+	if (( !( quiet ) && ${#@} > 1 )); then
+		(( canexit )) && die "Cannot return paths for multiple binaries"
+		std_ERRNO=$( errsymbol EARGS )
+		return 1
+	fi
 
 	files=( "${@:-}" )
 
-	(( ${#files[@]} )) || return 1
+	(( ${#files[@]} )) || {
+		std_ERRNO=$( errsymbol EARGS )
+		return 1
+	}
+
+	std_ERRNO=0
 
 	for item in "${files[@]}"; do
 		location=$( type -pf "${item}" 2>/dev/null ) || {
 			error "Cannot locate required '${item}' binary"
+			std_ERRNO=$( errsymbol ENOTFOUND )
 			rc=1
 		}
 		(( quiet )) || respond "${location:-}"
@@ -1337,6 +1524,7 @@ function __STDLIB_API_1_std::requires() { # {{{
 
 	(( canexit & rc )) && exit 1
 
+	# std_ERRNO set above
 	return ${rc}
 } # __STDLIB_API_1_std::requires # }}}
 
@@ -1351,7 +1539,7 @@ function __STDLIB_API_1_std::capture() { # {{{
 	local stream="${1:-}" ; shift
 	local cmd="${1:-}" ; shift
 	local args=( "${@:-}" )
-	local redirect="" response=""
+	local redirect="" response="" stdbuf=""
 	local -i rc=0
 
 	# Return the stdout or stderr output of a command in a consistent way.
@@ -1374,18 +1562,23 @@ function __STDLIB_API_1_std::capture() { # {{{
 			error "Invalid parameters: prototype '${FUNCNAME[0]##*_}" \
 				"<stream> <command> [arguments]', received" \
 				"'<${stream:-}> <${cmd:-}> [${args[*]}]'"
-			return 255
+			std_ERRNO=$( errsymbol EARGS )
+			return 1
 			;;
 	esac
 
 	if ! type -t "${cmd:-}" >/dev/null; then
 		error "Invalid parameters: <command> '${cmd:-}' not found"
-		return 255
+		std_ERRNO=$( errsymbol EARGS )
+		return 1
 	fi
 
-	response="$( eval "${cmd} ${args[*]} ${redirect}" )" ; rc=${?}
+	type -pf stdbuf >/dev/null 2>&1 && stdbuf="stdbuf -eL"
+
+	response="$( eval "${stdbuf:+${stdbuf} }${cmd} ${args[*]} ${redirect}" )" ; rc=${?}
 	output "${response:-}"
 
+	std_ERRNO=0
 	return ${rc}
 } # __STDLIB_API_1_std::capture # }}}
 
@@ -1402,14 +1595,18 @@ function __STDLIB_API_1_std::ensure() { # {{{
 
 	if ! type -t "${cmd:-}" >/dev/null; then
 		error "Invalid parameters: <command> '${cmd:-}' not found"
-		return 255
+
+		std_ERRNO=$( errsymbol EARGS )
+		return 1
 	fi
 
+	std_ERRNO=0
 	response="$( __STDLIB_API_1_std::capture stderr "${cmd}" "${args[@]}" )" ; rc=${?}
 	if (( !( rc ) )); then
 		# Succeeded
 		[[ -z "${err:-}" ]] && output "${response:-}"
 
+		# Don't stomp on std_ERRNO
 		return ${rc}
 	else
 		# Failed
@@ -1418,14 +1615,21 @@ function __STDLIB_API_1_std::ensure() { # {{{
 	fi
 
 	# Unreachable
+	std_ERRNO=$( errsymbol EERROR )
 	return 255
 } # __STDLIB_API_1_std::ensure # }}}
 
 function __STDLIB_API_1_std::silence() { # {{{
-	[[ -n "${1:-}" ]] || return 1
+	[[ -n "${1:-}" ]] || {
+		std_ERRNO=$( errsymbol EARGS )
+		return 1
+	}
+
+	std_ERRNO=0
 
 	__STDLIB_API_1_std::capture all "${@:-}" >/dev/null
 
+	# Don't stomp on std_ERRNO
 	return ${?}
 } # __STDLIB_API_1_std::silence # }}}
 
@@ -1440,13 +1644,17 @@ function __STDLIB_API_1_std::wordsplit() { # {{{
 	local -a string="${*:-}" words
 	local word
 
-	[[ -n "${string:-}" ]] || return 1
+	[[ -n "${string:-}" ]] || {
+		std_ERRNO=$( errsymbol EARGS )
+		return 1
+	}
 
 	read -r -d '' -a words <<<"${string}" # ` # <- Syntax highlight fail
 	for word in "${words[@]}"; do
 		respond "${word}"
 	done
 
+	std_ERRNO=0
 	return 0
 } # __STDLIB_API_1_std::wordsplit # }}}
 
@@ -1462,9 +1670,18 @@ function __STDLIB_API_1_std::getfilesection() { # {{{
 	local section="${1:-}" ; shift
 	local script
 
-	[[ -n "${file:-}" ]] || return 1
-	[[ -s "${file}" || -p "${file}" ]] || return 1
-	[[ -n "${section:-}" ]] || return 1
+	[[ -n "${file:-}" ]] || {
+		std_ERRNO=$( errsymbol EARGS )
+		return 1
+	}
+	[[ -s "${file}" || -p "${file}" ]] || {
+		std_ERRNO=$( errsymbol ENOTFOUND )
+		return 1
+	}
+	[[ -n "${section:-}" ]] || {
+		std_ERRNO=$( errsymbol EENV )
+		return 1
+	}
 
 	# By printing the line before setting 'output' to 1, we prevent the
 	# section header itself from being returned.
@@ -1477,6 +1694,7 @@ function __STDLIB_API_1_std::getfilesection() { # {{{
 
 	respond "$( awk -- "${script:-}" "${file}" )"
 
+	std_ERRNO=0
 	return ${?}
 } # __STDLIB_API_1_std::getfilesection # }}}
 
@@ -1490,6 +1708,8 @@ function __STDLIB_API_1_std::getfilesection() { # {{{
 function  __STDLIB_API_1_std::http::squash() { # {{{
 	local -i code=${1:-} ; shift
 	local -i result=0
+
+	std_ERRNO=0
 
 	debug "${FUNCNAME[0]##*_} received HTTP code '${code:-}'"
 
@@ -1507,10 +1727,13 @@ function  __STDLIB_API_1_std::http::squash() { # {{{
 		(( result = ( code - 400 ) + 150 ))
 	else
 		error "Cannot squash non-RFC2616 Status Code '${code}'"
+
+		std_ERRNO=$( errsymbol EARGS )
 	fi
 
 	debug "${FUNCNAME[0]##*_} returned shell code ${result}"
 
+	# Don't stomp on std_ERRNO
 	return ${result}
 } # __STDLIB_API_1_std::http::squash # }}}
 
@@ -1547,8 +1770,14 @@ function __STDLIB_API_1_std::http::expand() { # {{{
 
 	debug "${FUNCNAME[0]##*_} returned HTTP code '${result}': ${rc}"
 
-	(( rc )) || respond ${result}
+	if (( rc )); then
+		std_ERRNO=$( errsymbol EARGS )
+	else
+		std_ERRNO=0
+		respond ${result}
+	fi
 
+	# Don't stomp on std_ERRNO
 	return ${rc}
 } # __STDLIB_API_1_std::http::expand # }}}
 
@@ -1567,6 +1796,8 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 
 	local std_PARSEARGS_parsed=1
 
+	std_ERRNO=0
+
 	if [[ "${1:-}" =~ ^(--)?strip$ ]]; then
 		for arg in "${@:-}"; do
 			(( rc )) || [[ "${arg:-}" =~ ^- ]] || respond "${arg:-}"
@@ -1579,6 +1810,8 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 		(( std_DEBUG )) && error "${FUNCNAME[0]##*_} requires bash-4 associative arrays"
 		std_PARSEARGS_parsed=0
 		respond "std_PARSEARGS_parsed=${std_PARSEARGS_parsed:-0}"
+
+		std_ERRNO=$( errsymbol ENOEXE )
 		return 1
 	}
 
@@ -1649,6 +1882,8 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 						(( std_DEBUG )) && error "${FUNCNAME[0]##*_}: Specified name '${1:-}' is not a valid variable-name"
 						std_PARSEARGS_parsed=0
 						respond "std_PARSEARGS_parsed=${std_PARSEARGS_parsed:-0}"
+
+						std_ERRNO=$( errsymbol EARGS )
 						return 1
 					fi
 					;;
@@ -1659,6 +1894,8 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 					(( std_DEBUG )) && error "${FUNCNAME[0]##*_}: Unknown option '${current}'"
 					std_PARSEARGS_parsed=0
 					respond "std_PARSEARGS_parsed=${std_PARSEARGS_parsed:-0}"
+
+					std_ERRNO=$( errsymbol EARGS )
 					return 1
 					;;
 			esac
@@ -1680,6 +1917,8 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 				(( std_DEBUG )) && error "${FUNCNAME[0]##*_}: Provided name '${arg:-}' is not a valid variable-name"
 				std_PARSEARGS_parsed=0
 				respond "std_PARSEARGS_parsed=${std_PARSEARGS_parsed:-0}"
+
+				std_ERRNO=$( errsymbol EARGS )
 				return 1
 			fi
 		else
@@ -1715,6 +1954,7 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 	std_PARSEARGS_parsed=$(( !( rc ) ))
 	respond "std_PARSEARGS_parsed=${std_PARSEARGS_parsed:-0}"
 
+	(( rc )) && std_ERRNO=$( errsymbol EARGS )
 	return ${rc}
 } # __STDLIB_API_1_std::parseargs # }}}
 
@@ -1791,9 +2031,11 @@ function __STDLIB_API_1_std::configure() { # {{{
 	export HTMLDIR="${htmldir:-${DOCDIR}}"
 
 	if [[ -d "${PREFIX:-}/" && -d "${EXEC_PREFIX:-}/" ]]; then
+		std_ERRNO=0
 		return 0
 	fi
 
+	std_ERRNO=$( errsymbol ENOTFOUND )
 	return 1
 } # __STDLIB_API_1_std::configure() # }}}
 
@@ -1845,14 +2087,19 @@ function __STDLIB_API_1_std::configure() { # {{{
 #	mkdir -p "$( dirname "$lockfile" )" 2>/dev/null || exit 1
 #
 #	if ( set -o noclobber ; echo "$$" >"$lockfile" ) 2>/dev/null; then
+#		std_ERRNO=0
 #		std::garbagecollect "${lockfile}"
+#
+#		# Don't stomp on std_ERRNO
 #		return ${?}
 #	else
+#		std_ERRNO=$( errsymbol EACCESS )
 #		return 1
 #	fi
 #
 #	# Unreachable
-#	return 128
+#	std_ERRNO=$( errsymbol EERROR )
+#	return 255
 #} # lock
 
 # }}}
@@ -1913,7 +2160,7 @@ function __STDLIB_API_1_std::configure() { # {{{
 #			1 == output && output = 2 ;
 #		 } ;
 #	"
-#done | grep -B 1 "${canary}" | grep "^${prefix}" | while read stdlib_alias; do
+#done | grep -B 1 "${canary}" | grep "^${prefix}" | while read -r stdlib_alias; do
 #	unalias $stdlib_alias 2>/dev/null
 #done
 
@@ -1934,6 +2181,8 @@ function http::test() { # {{{
 
 	(( STDLIB_HAVE_BASH_4 )) || {
 		(( std_DEBUG )) && error "${FUNCNAME[0]##*_} requires bash-4 associative arrays"
+
+		std_ERRNO=$( errsymbol ENOEXE )
 		return 1
 	}
 
@@ -2033,6 +2282,8 @@ function http::test() { # {{{
 	output "Testing HTTP-to-shell response-code mappings\n"
 	output "N.B.: non-RFC2616 status codes are expected failures\n"
 
+	std_ERRNO=0
+
 	# 'ic' and 'code' are numeric, and therefore not subject to word-splitting
 	# shellcheck disable=SC2086
 	for code in $( for ic in "${!codes[@]}"; do echo ${ic}; done | sort -n ); do
@@ -2043,9 +2294,11 @@ function http::test() { # {{{
 		else
 			warn "${code} '${codes[${code}]}' -> ${ic} -> ${rc} : FAIL"
 			result=1
+			std_ERRNO=$( errsymbol EERROR )
 		fi
 	done
 
+	# Don't stomp std_ERRNO
 	return ${result}
 } # http::test # }}}
 
@@ -2071,11 +2324,8 @@ unset __STDLIB_oneshot_get_bash_version
 __STDLIB_oneshot_syntax_check || exit 1
 unset __STDLIB_oneshot_syntax_check
 
-if [[ -n "${STDLIB_WANT_ERRNO:-}" ]] && (( !( STDLIB_HAVE_ERRNO ) )); then
-	# Initialise errno functions...
-	__STDLIB_oneshot_errno_init
-	unset __STDLIB_oneshot_errno_init
-fi
+__STDLIB_oneshot_errno_init
+unset __STDLIB_oneshot_errno_init
 
 declare -i __STDLIB_API="${STDLIB_API:-1}"
 case "${__STDLIB_API}" in
@@ -2098,7 +2348,7 @@ export __STDLIB_API
 # stdlib.sh should be in /usr/local/lib/stdlib.sh, which can be found as
 # follows by scripts located in /usr/local/{,s}bin/...
 #
-std_LIB="${std_LIB:-stdlib.sh}"
+declare std_LIB="${std_LIB:-stdlib.sh}"
 for std_LIBPATH in \
 	 ${std_LIBPATH:-} \
 	"/usr/local/lib" \
@@ -2125,7 +2375,7 @@ else
 	output >&2 "FATAL:  Cannot locate ${std_LIB} library functions"
 	exit 1
 fi
-export std_LIBPATH std_LIB
+typeset -gx std_LIBPATH std_LIB
 
 # Red Hat/CentOS 5.x ship with a version of grep which can't parse '\s', and
 # so '[[:space:]]' has to be used instead.  We can work around this as follows,
@@ -2137,7 +2387,8 @@ echo ' ' | eval "grep -Eq '${s}'" || s='[[:space:]]'
 # but instead uses '-E'.  It still can't grok '\s' for [[:space:]], though...
 # Worse, MacOS/BSD sed doesn't understand '\+', so extended mode is required.
 sed='sed -r'
-${sed} '' >/dev/null 2>&1 <<<'' || sed='sed -E' # ` # <- Syntax highlight fail
+echo '' | ${sed} >/dev/null 2>&1 || sed='sed -E'
+
 [[ "$( echo ' ' | ${sed} 's/\s/x/' )" == 'x' ]] || s='[[:space:]]'
 
 # Create interface for functions of the appropriate API...
@@ -2187,15 +2438,14 @@ while read -r fapi; do
 	#
 	#  grep '^[[:space:]]*function[[:space:]]\+[a-zA-Z_]\+[a-zA-Z0-9_-]*[[:space:]]*()[[:space:]]*{\?[[:space:]]*$'
 	#
-	# ... or, experiments show, \W ([^[:alnum:]]) seems to be an
-	# acceptable alternative (as would '[ ${std_TAB}]' be)!
+	# ... or, experiments show, \W ([^[:alnum:]]) appears to be an
+	# acceptable alternative (as would '[ ${std_TAB}]' also be)!
 	#
-	# N.B.: Moved comment above code below due to syntax-highlighter
-	# breakage.
-	#
+	# Update: Reverted to 'grep -E' in the third line below in place of:
 	#| grep '^\W*function\W\+[a-zA-Z_]\+[a-zA-Z0-9_:\-]*\W*()\W*{\?\W*$' \
 	#
-	# Update: Reverted to 'grep -E' from the above
+	# N.B.: Moved comment before the code below due to syntax-highlighter
+	# breakage.
 	#
 
 done < <(
@@ -2208,27 +2458,24 @@ unset fapi sed s
 
 # Also export non-API-versioned functions...
 #
-export -f output respond
+# shellcheck disable=SC2034
+typeset -fgx output respond
 
-# Need ability to serialise arrays...
-#export __STDLIB_functionlist
+typeset -gax __STDLIB_functionlist
 
-export STDLIB_HAVE_STDLIB=1
+typeset -gix STDLIB_HAVE_STDLIB=1
+
+if [[ -r "${std_LIBPATH}"/memcached.sh ]]; then
+	if [[ -n "${STDLIB_WANT_MEMCACHED:-}" ]] && ! (( STDLIB_HAVE_MEMCACHED )); then
+		# shellcheck source=/usr/local/lib/memcached.sh disable=SC1091
+		source "${std_LIBPATH}"/memcached.sh && \
+			typeset -gix STDLIB_HAVE_MEMCACHED=1
+	fi
+fi
 
 # }}}
 
-fi # [[ -z "${STDLIB_HAVE_STDLIB:-}" ]] # Line 10
-
-
-if [[ -r "${std_LIBPATH}"/memcached.sh ]]; then
-	if [[ -n "${STDLIB_WANT_MEMCACHED:-}" ]] \
-		&& (( !( STDLIB_HAVE_MEMCACHED ) ))
-	then
-		# shellcheck source=/usr/local/lib/memcached.sh disable=SC1091
-		source "${std_LIBPATH}"/memcached.sh \
-			&& export STDLIB_HAVE_MEMCACHED=1
-	fi
-fi
+fi # [[ "$( type -t std::sentinel 2>&1 )" != "function" ]] # Line 41
 
 
 ###############################################################################

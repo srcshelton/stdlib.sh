@@ -111,6 +111,7 @@ Functions
 | `std::emktemp()`        | Enhanced `mktemp(1)` replacemnt with improved syntax                                           |
 | `std::push()`           | `Push()` implementation - see Martin Väth's original [here](https://github.com/vaeth/push)     |
 | `std::readlink()`       | Basic OS-neutral `readlink(1)` stand-in                                                        |
+| `std::inherit`          | Document the use of global variables                                                           |
 | `std::define()`         | Improved HEREDOC support, without the need to invoke `cat`                                     |
 | `std::formatlist()`     | Return an English-formatted list with Oxford comma                                             |
 | `std::vcmp()`           | Compare two specified versions, or output a list of versions and succeed if the list was sorted|
