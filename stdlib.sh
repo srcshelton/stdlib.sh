@@ -1269,7 +1269,7 @@ function __STDLIB_API_1_std::inherit() { # {{{
 				item="${item//e}"
 			fi
 			flags+=( "${item}" )
-		elif [[ -z "${val[*]}" ]]; then
+		elif [[ -z "${val[*]:-}" ]]; then
 			var="${item}"
 		else
 			val+=( "${item}" )
@@ -1300,7 +1300,7 @@ function __STDLIB_API_1_std::inherit() { # {{{
 
 	if (( exported )) && env | grep -q "^${var}="; then
 		:
-	elif (( ! exported )) && [[ -n "${var}" ]]; then
+	elif (( ! exported )) && [[ -n "${!var}" ]]; then
 		:
 	else
 		[[ -n "${val[*]:-}" ]] || {
