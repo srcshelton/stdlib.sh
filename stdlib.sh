@@ -1,6 +1,6 @@
 # Copyright 2013-2016 Stuart Shelton
 # Distributed under the terms of the GNU General Public License v2
-# 
+#
 # stdlib.sh standardised shared shell functions...
 
 # Pull this file into external scripts as follows:
@@ -251,6 +251,22 @@ export std_ERRNO=0
 declare -a __STDLIB_OWNED_FILES
 
 declare std_INTERNAL_DEBUG="${SLDEBUG:-0}"
+
+## Colored output
+std_COLOR_START_GREEN="\033[32m"
+std_COLOR_START_BLUE="\033[34m"
+std_COLOR_START_YELLOW="\033[33m"
+std_COLOR_START_RED="\033[31m"
+std_COLOR_END="\033[0m"
+
+std_COLOR_OFF="${COLOR_OFF:-0}"
+if(( std_COLOR_OFF )); then
+	std_COLOR_START_GREEN=""
+	std_COLOR_START_BLUE=""
+	std_COLOR_START_YELLOW=""
+	std_COLOR_START_RED=""
+	std_COLOR_END=""
+fi
 # }}}
 
 
@@ -603,7 +619,7 @@ function __STDLIB_API_1_std::log() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_die() { # {{{
-	[[ -n "${*:-}" ]] && std_DEBUG=1 __STDLIB_API_1_std::log >&2 "FATAL: " "${*}"
+	[[ -n "${*:-}" ]] && std_DEBUG=1 __STDLIB_API_1_std::log >&2 "${std_COLOR_START_RED}FATAL${std_COLOR_END}: " "${*}"
 	__STDLIB_API_1_std::cleanup 1
 
 	# Don't stomp on std_ERRNO
@@ -613,7 +629,7 @@ function __STDLIB_API_1_die() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_error() { # {{{
-	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "ERROR: " "${*:-Unspecified error}"
+	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "${std_COLOR_START_RED}ERROR${std_COLOR_END}: " "${*:-Unspecified error}"
 
 	# Don't stomp on std_ERRNO
 	return 1
@@ -622,7 +638,7 @@ function __STDLIB_API_1_error() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_warn() { # {{{
-	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "WARN:  " "${*:-Unspecified warning}"
+	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "${std_COLOR_START_YELLOW}WARN${std_COLOR_END}:  " "${*:-Unspecified warning}"
 
 	# Don't stomp on std_ERRNO
 	return 1
@@ -632,7 +648,7 @@ function __STDLIB_API_1_warn() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_note() { # {{{
-	std_DEBUG=1 __STDLIB_API_1_std::log "NOTICE:" "${*:-Unspecified notice}"
+	std_DEBUG=1 __STDLIB_API_1_std::log "${std_COLOR_START_BLUE}NOTICE${std_COLOR_END}:" "${*:-Unspecified notice}"
 
 	# Don't stomp on std_ERRNO
 	return 0
