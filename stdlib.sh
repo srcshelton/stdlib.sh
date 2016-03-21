@@ -78,8 +78,10 @@ fi # }}}
                             # improve MacOS compatibility
 #export std_RELEASE="1.4.7" # Fix warnings identified by shellcheck.net, add
                             # std::wordsplit
-export  std_RELEASE="1.5.0" # Add std::inherit, finally make errno functions
+#export  std_RELEASE="1.5.0" # Add std::inherit, finally make errno functions
                             # work!  Set std_ERRNO where appropriate
+#export std__RELEASE="1.6.0"	# Added colored output tags
+export std__RELEASE="1.7.0"	# Added command execution functions
 readonly std_RELEASE
 
 
@@ -103,6 +105,14 @@ cat >/dev/null <<EOC
 EOC
 #
 # ... near the top of the calling script.
+
+declare std_PRETEND
+# Standard usage is:
+#
+std_PRETEND="${PRETEND:-0}"
+
+declare std_WRAPLOG
+std_WRAPLOG="${WRAPLOG:-0}"
 
 
 # If this is not overridden, then logging will be disabled:
@@ -252,12 +262,35 @@ declare -a __STDLIB_OWNED_FILES
 
 declare std_INTERNAL_DEBUG="${SLDEBUG:-0}"
 
+# Command controlled execution
+export STDLIB_EXEC_COMMAND=""
+export STDLIB_EXEC_RESULT=""
+export STDLIB_EXEC_STATUS=0
+
+
+## debug verbosity
+readonly STDLIB_DEBUG_NORMAL=1
+readonly STDLIB_DEBUG_SSH=2
+readonly STDLIB_DEBUG_RSYNC=3
+readonly STDLIB_DEBUG_REMOTE=4
+readonly STDLIB_DEBUG_JSON=5
+readonly STDLIB_DEBUG_PARALLEL=6
+readonly STDLIB_DEBUG_FUNCTION=7
+
+## command stream capture
+readonly STDLIB_STREAM_NORMAL=0
+readonly STDLIB_STREAM_STDOUT=1
+readonly STDLIB_STREAM_STDERR=2
+readonly STDLIB_STREAM_ALL=3
+readonly STDLIB_STREAM_NONE=4
+readonly STDLIB_STREAM_INTERACTIVE=5
+
 ## Colored output
-std_COLOR_START_GREEN="\033[32m"
-std_COLOR_START_BLUE="\033[34m"
-std_COLOR_START_YELLOW="\033[33m"
-std_COLOR_START_RED="\033[31m"
-std_COLOR_END="\033[0m"
+std_COLOR_START_GREEN="$(tput setaf 2)"
+std_COLOR_START_BLUE="$(tput setaf 4)"
+std_COLOR_START_YELLOW="$(tput setaf 3)"
+std_COLOR_START_RED="$(tput setaf 1)"
+std_COLOR_END="$(tput sgr0)"
 
 std_COLOR_OFF="${COLOR_OFF:-0}"
 if(( std_COLOR_OFF )); then
@@ -533,8 +566,18 @@ function __STDLIB_API_1_std::usage() { # {{{
 ###############################################################################
 
 function __STDLIB_API_1_std::wrap() { # {{{
+	local outputFlag=""
+
+	local param_logFlag="${1:-}" ;  [[ "${param_logFlag}" == "-n" ]] && shift
 	local prefix="${1:-}" ; shift
 	local text="${*:-}"
+
+	if [[ "${param_logFlag}" == "-n" ]]; then
+		outputFlag="-n"
+
+	else
+		param_logFlag=""
+	fi
 
 	[[ -n "${text:-}" ]] || {
 		std_ERRNO=$( errsymbol EARGS )
@@ -549,19 +592,19 @@ function __STDLIB_API_1_std::wrap() { # {{{
 
 	if [[ -n "${prefix:-}" ]]; then
 		if (( columns > ( ${#prefix} + 2 ) )); then
-			  output "${text}" \
+			  output "${outputFlag}" "${text}" \
 			| fold -sw "$(( columns - ( ${#prefix} + 1 ) ))" \
 			| sed "s/^/${prefix} /"
 		else
-			  output "${text}" \
+			  output "${outputFlag}" "${text}" \
 			| sed "s/^/${prefix} /"
 		fi
 	else
 		if (( columns > 1 )); then
-			  output "${text}" \
+			  output "${outputFlag}" "${text}" \
 			| fold -sw "$(( columns - 1))"
 		else
-			  output "${text}"
+			  output "${outputFlag}" "${text}"
 		fi
 	fi
 
@@ -570,8 +613,18 @@ function __STDLIB_API_1_std::wrap() { # {{{
 } # __STDLIB_API_1_std::wrap # }}}
 
 function __STDLIB_API_1_std::log() { # {{{
+	local outputFlag=""
+
+	local param_logFlag="${1:-}" ;  [[ "${param_logFlag}" == "-n" ]] && shift
 	local prefix="${1:-${std_LIB}}" ; shift
 	local data="${*:-}" message
+
+	if [[ "${param_logFlag}" == "-n" ]]; then
+		outputFlag="-n"
+
+	else
+		param_logFlag=""
+	fi
 
 	# Assume that log messages should be written to a file (unless we're
 	# debugging) ... otherwise, use note(), warn(), or error() to output
@@ -602,10 +655,12 @@ function __STDLIB_API_1_std::log() { # {{{
 	# We don't care whether std_LOGFILE exists, but we do care whether it's
 	# set...
 	[[ -n "${std_LOGFILE:-}" && "${std_LOGFILE}" != "syslog" ]] \
-		&& output "${message}" >>"${std_LOGFILE}" 2>&1
+		&& { [[ ! -n "${outputFlag}" ]] && output "${message}" >>"${std_LOGFILE}" 2>&1; [[ -n "${outputFlag}" ]] && output "${outputFlag}" "${message}" >>"${std_LOGFILE}" 2>&1; }
 
 	if (( std_DEBUG )); then
-		__STDLIB_API_1_std::wrap "${prefix}" "${data}"
+		## 'output' adds a trailing white space when ${outputFlag} is empty...
+		(( !std_WRAPLOG )) && { [[ ! -n "${outputFlag}" ]] && output "${prefix} ${data}"; [[ -n "${outputFlag}" ]] && output "${outputFlag}" "${prefix} ${data}"; }
+		(( std_WRAPLOG )) && __STDLIB_API_1_std::wrap "${param_logFlag}" "${prefix}" "${data}"
 	fi
 
 	# Don't stomp on std_ERRNO
@@ -619,7 +674,7 @@ function __STDLIB_API_1_std::log() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_die() { # {{{
-	[[ -n "${*:-}" ]] && std_DEBUG=1 __STDLIB_API_1_std::log >&2 "${std_COLOR_START_RED}FATAL${std_COLOR_END}: " "${*}"
+	[[ -n "${*:-}" ]] && std_DEBUG=1 __STDLIB_API_1_std::log >&2 "[  ${std_COLOR_START_RED}FATAL${std_COLOR_END}  ]" "${*}"
 	__STDLIB_API_1_std::cleanup 1
 
 	# Don't stomp on std_ERRNO
@@ -629,7 +684,7 @@ function __STDLIB_API_1_die() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_error() { # {{{
-	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "${std_COLOR_START_RED}ERROR${std_COLOR_END}: " "${*:-Unspecified error}"
+	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "[  ${std_COLOR_START_RED}ERROR${std_COLOR_END}  ]" "${*:-Unspecified error}"
 
 	# Don't stomp on std_ERRNO
 	return 1
@@ -638,7 +693,7 @@ function __STDLIB_API_1_error() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_warn() { # {{{
-	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "${std_COLOR_START_YELLOW}WARN${std_COLOR_END}:  " "${*:-Unspecified warning}"
+	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "[ ${std_COLOR_START_YELLOW}WARNING${std_COLOR_END} ]" "${*:-Unspecified warning}"
 
 	# Don't stomp on std_ERRNO
 	return 1
@@ -648,7 +703,7 @@ function __STDLIB_API_1_warn() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_note() { # {{{
-	std_DEBUG=1 __STDLIB_API_1_std::log "${std_COLOR_START_BLUE}NOTICE${std_COLOR_END}:" "${*:-Unspecified notice}"
+	std_DEBUG=1 __STDLIB_API_1_std::log "[ ${std_COLOR_START_BLUE}NOTICE${std_COLOR_END}  ]" "${*:-Unspecified notice}"
 
 	# Don't stomp on std_ERRNO
 	return 0
@@ -661,7 +716,7 @@ function __STDLIB_API_1_notice() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_info() { # {{{
-	std_DEBUG=1 __STDLIB_API_1_std::log "INFO:  " "${*:-Unspecified message}"
+	std_DEBUG=1 __STDLIB_API_1_std::log "[  INFO   ]" "${*:-Unspecified message}"
 
 	# Don't stomp on std_ERRNO
 	return 0
@@ -670,11 +725,274 @@ function __STDLIB_API_1_info() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_debug() { # {{{
-	(( std_DEBUG )) && __STDLIB_API_1_std::log >&2 "DEBUG: " "${*:-Unspecified message}"
+	local message="${1:-Unspecified message}"
+	local -i level=${2:-$STDLIB_DEBUG_NORMAL}
+
+	(( $std_DEBUG == $level )) && __STDLIB_API_1_std::log >&2 "[  DEBUG  ]" "${message}"
 
 	# Don't stomp on std_ERRNO
 	return $(( ! std_DEBUG ))
 } # __STDLIB_API_1_debug # }}}
+
+###############################################################################
+#
+# stdlib.sh - Command execution
+#
+# The following set of function are meant to ease usage of control variables
+# like DEBUG and PRETEND over sub commands, preserving preamble and output text.
+#
+# - The command being executed is stored in STDLIB_EXEC_COMMAND.
+# - Execution status code is always captured, saved in STDLIB_EXEC_STATUS and
+#   then evaluated.
+# - When the function return value is required, then the command is evaluated in
+#   a subshell and the execution return value is stored in STDLIB_EXEC_RESULT
+#
+# The default behaviour is to always use a subshell, display command's stdout
+# content, store both status and return value, not display command result.
+# This behaviour can be controlled by use of 'std_STREAM_XXX' parameter, in
+# order to be able to execute commands from completely silent output to full
+# interactive mode, while still being able to use the output control framework
+# provided by the function set.
+#
+# A number of support functions is provided for special handling of results and
+# display control.
+#
+# Typical usage should look as follows:
+#
+# local dir="/usr/local/bin"
+# waitForRes "Chdir to '${dir}'"
+# evalRes "cd ${dir}"
+# checkRes f "cannot chdir to '${dir}'"
+#
+# Normal output would be something like:
+#
+# [ EXEC  ] Chdir to '/usr/local/bin' [OK]
+#
+# If called with DEBUG=1, the output would be:
+#
+# [ EXEC  ] Chdir to '/usr/local/bin'
+# [ DEBUG ] About to run: 'cd /usr/local/bin'
+#  [OK]
+#
+# If called with PRETEND=1, the output would be:
+#
+# [ EXEC  ] Chdir to '/usr/local/bin'
+# [ DEBUG ] Pretend to run: 'cd /usr/local/bin'
+#  [OK]
+#
+###############################################################################
+
+# This function may be overridden
+# The idea is to log a message (with optional new line at the end),
+# wait for exectuion to finish, then
+# log the overall result at the end of the same line
+# with one of the closing-tag function below.
+function __STDLIB_API_1_waitForRes() { # {{{
+	local message="${1:-}"
+	local -i newLine=${2:-0}
+
+
+	(( $std_PRETEND )) && message="(Pretend) ${message}"
+
+	(( $std_DEBUG == $STDLIB_DEBUG_NORMAL )) && newLine=1
+
+	(( !newLine ))  &&  std_DEBUG=1 __STDLIB_API_1_std::log -n "[  EXEC   ]" "${message} "
+	(( newLine ))  &&   std_DEBUG=1 __STDLIB_API_1_std::log "[  EXEC   ]" "${message} "
+
+	std_ERRNO=0
+	return 0
+
+} # __STDLIB_API_1_waitForRes # }}}
+
+
+# This function may be overridden
+#
+function __STDLIB_API_1_showRes() { # {{{
+	local prefix="${1:-${std_LIB}}" ; shift
+	local data="${*:-}"
+	local pre=""
+	local post=""
+
+	if [[ -n "${data}" ]]; then
+		pre="- "
+		post=" "
+	fi
+
+	std_DEBUG=1 __STDLIB_API_1_std::log " [ ${prefix}" "${pre}${data}${post}]"
+
+	std_ERRNO=0
+	return 0
+} # __STDLIB_API_1_showRes # }}}
+
+
+# This function may be overridden
+#
+function __STDLIB_API_1_resOk() { # {{{
+	__STDLIB_API_1_showRes "${std_COLOR_START_GREEN}OK${std_COLOR_END}" "${@:-}"
+
+	# Don't stomp on std_ERRNO
+	return 0
+} # __STDLIB_API_1_resOk # }}}
+
+
+# This function may be overridden
+#
+function __STDLIB_API_1_resWarning() { # {{{
+	__STDLIB_API_1_showRes "${std_COLOR_START_YELLOW}WARNING${std_COLOR_END}" "${@:-}"
+
+	# Don't stomp on std_ERRNO
+	return 1
+} # __STDLIB_API_1_resWarning # }}}
+
+# This function may be overridden
+#
+function __STDLIB_API_1_resKo() { # {{{
+	__STDLIB_API_1_showRes "${std_COLOR_START_RED}FAIL${std_COLOR_END}" "${@:-}"
+
+	# Don't stomp on std_ERRNO
+	return 1
+} # __STDLIB_API_1_resKo # }}}
+
+
+# This function may be overridden
+#
+function __STDLIB_API_1_resFail() { # {{{
+	__STDLIB_API_1_showRes "${std_COLOR_START_RED}FAIL${std_COLOR_END}" "${@:-}"
+	die
+
+	# Dead code, die will immediately quit
+	return 1
+} # __STDLIB_API_1_resFail # }}}
+
+
+# This function may be overridden
+#
+function __STDLIB_API_1_callAndDie() { # {{{
+	local functionName="${1:-}" ; shift
+	local data="${*:-}"
+
+	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "[  ${std_COLOR_START_RED}FATAL${std_COLOR_END}  ]" "${data}"
+	[[ -n "${functionName}" ]]  &&  eval "${functionName}"
+	__STDLIB_API_1_std::cleanup 1
+
+	# Dead code, cleanup will call die and immediately quit
+	return 1
+} # __STDLIB_API_1_callAndDie # }}}
+
+
+# This function may be overridden
+#
+function __STDLIB_API_1_evalRes() { # {{{
+	local command="${1:-${STDLIB_EXEC_COMMAND}}"
+	local -i param_selectStream=${2:-$STDLIB_STREAM_NORMAL}
+
+	STDLIB_EXEC_COMMAND="${command}"
+	STDLIB_EXEC_RESULT=""
+	STDLIB_EXEC_STATUS=0
+
+	(( $std_PRETEND )) && debug "Pretend to run '${command}'" $STDLIB_DEBUG_FUNCTION
+	(( !std_PRETEND )) && debug "About to run '${command}'" $STDLIB_DEBUG_FUNCTION
+
+	if (( !std_PRETEND )); then
+		case $param_selectStream in
+			$STDLIB_STREAM_NORMAL)
+				STDLIB_EXEC_RESULT="$( eval "${command}" )"
+				STDLIB_EXEC_STATUS=$?
+				;;
+
+			$STDLIB_STREAM_STDOUT)
+				STDLIB_EXEC_RESULT="$( eval "${command}" >&1 2>/dev/null )"
+				STDLIB_EXEC_STATUS=$?
+				;;
+
+			$STDLIB_STREAM_STDERR)
+				STDLIB_EXEC_RESULT="$( eval "${command}" >&2 1>/dev/null )"
+				STDLIB_EXEC_STATUS=$?
+				;;
+
+			$STDLIB_STREAM_ALL)
+				STDLIB_EXEC_RESULT="$( eval "${command}" 2>&1 )"
+				STDLIB_EXEC_STATUS=$?
+				;;
+
+			$STDLIB_STREAM_NONE)
+				STDLIB_EXEC_RESULT="$( eval "${command}" &>/dev/null )"
+				STDLIB_EXEC_STATUS=$?
+				;;
+
+			$STDLIB_STREAM_INTERACTIVE)
+				eval "${command}"
+				STDLIB_EXEC_STATUS=$?
+				;;
+			*)
+				die "wrong stream selected: '$param_selectStream'"
+				;;
+		esac
+	fi
+
+	debug "*** S:evalRes() ***" $STDLIB_DEBUG_FUNCTION
+	debug "MYSTATUS: '${STDLIB_EXEC_STATUS}'" $STDLIB_DEBUG_FUNCTION
+	debug "MYRESULT: '\n${STDLIB_EXEC_RESULT}\n'" $STDLIB_DEBUG_FUNCTION
+	debug "*** E:evalRes() ***" $STDLIB_DEBUG_FUNCTION
+
+	respond "${STDLIB_EXEC_RESULT}"
+	debug "MYSTATUS: '${STDLIB_EXEC_STATUS}'" $STDLIB_DEBUG_FUNCTION
+
+	if (( STDLIB_EXEC_STATUS )); then
+		std_ERRNO="$( errsymbol ESUBSHELL )"
+	else
+		std_ERRNO="$( errsymbol ENOERROR )"
+	fi
+
+	return $STDLIB_EXEC_STATUS
+
+} #__STDLIB_API_1_evalRes # }}}
+
+
+# This function may be overridden
+#
+function __STDLIB_API_1_getRes() { # {{{
+	local command="${1:-}"
+	local -i param_selectStream=${2:-$STDLIB_STREAM_NORMAL}
+
+	evalRes "${command}" $param_selectStream
+
+	# std_ERRNO is set in evalRes
+
+	respond "${STDLIB_EXEC_RESULT}"
+	return $STDLIB_EXEC_STATUS
+} #__STDLIB_API_1_getRes # }}}
+
+
+# This function may be overridden
+#
+function __STDLIB_API_1_checkRes() { # {{{
+	local option="${1:-w}"
+	local -i res=${2:-$STDLIB_EXEC_STATUS}
+	local message="${3:-}"
+
+	if [[ "${option}" != "w" ]]  &&  [[ "${option}" != "k" ]]  &&  [[ "${option}" != "f" ]]; then
+		std_ERRNO="$( errsymbol EARGS )"
+		resFail "invalid evaluation option"
+
+	elif (( $res )); then
+		if [[ "${option}" == "w" ]]; then
+			resWarning "${message}"
+
+		elif [[ "${option}" == "k" ]]; then
+			resKo "${message}"
+
+		elif [[ "${option}" == "f" ]]; then
+			resFail "${message}"
+		fi
+	else
+		resOk
+	fi
+
+	# std_ERRNO is set in evalRes
+
+	return $res
+} # __STDLIB_API_1_checkRes # }}}
 
 
 ###############################################################################
@@ -720,6 +1038,7 @@ function __STDLIB_oneshot_errno_init() { # {{{
 	__STDLIB_errsym[4]="ENOEXE"		; __STDLIB_errstr[4]="Required executable not found"		; (( count ++ )) ;
 	__STDLIB_errsym[5]="ESYNTAX"		; __STDLIB_errstr[5]="Syntax error"				; (( count ++ )) ;
 	__STDLIB_errsym[6]="EACCESS"		; __STDLIB_errstr[6]="File access denied"			; (( count ++ )) ;
+	__STDLIB_errsym[7]="ESUBSHELL"		; __STDLIB_errstr[6]="Subshell execution failure"			; (( count ++ )) ;
 
 	# These should appear, in order, last:
 	__STDLIB_errsym[ ${count} ]="EERROR"	; __STDLIB_errstr[ ${count} ]="Undefined error"			; (( count ++ )) ;
