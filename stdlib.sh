@@ -80,6 +80,7 @@ fi # }}}
                             # std::wordsplit
 export  std_RELEASE="1.5.0" # Add std::inherit, finally make errno functions
                             # work!  Set std_ERRNO where appropriate
+#export std__RELEASE="1.6.0"	# Added coloured output tags
 readonly std_RELEASE
 
 
@@ -253,19 +254,19 @@ declare -a __STDLIB_OWNED_FILES
 declare std_INTERNAL_DEBUG="${SLDEBUG:-0}"
 
 ## Colored output
-std_COLOR_START_GREEN="\033[32m"
-std_COLOR_START_BLUE="\033[34m"
-std_COLOR_START_YELLOW="\033[33m"
-std_COLOR_START_RED="\033[31m"
-std_COLOR_END="\033[0m"
+std_COLOUR_START_GREEN="\033[32m"
+std_COLOUR_START_BLUE="\033[34m"
+std_COLOUR_START_YELLOW="\033[33m"
+std_COLOUR_START_RED="\033[31m"
+std_COLOUR_END="\033[0m"
 
-std_COLOR_OFF="${COLOR_OFF:-0}"
-if(( std_COLOR_OFF )); then
-	std_COLOR_START_GREEN=""
-	std_COLOR_START_BLUE=""
-	std_COLOR_START_YELLOW=""
-	std_COLOR_START_RED=""
-	std_COLOR_END=""
+std_COLOUR_OFF="${COLOUR_OFF:-1}"
+if(( std_COLOUR_OFF )); then
+	std_COLOUR_START_GREEN=""
+	std_COLOUR_START_BLUE=""
+	std_COLOUR_START_YELLOW=""
+	std_COLOUR_START_RED=""
+	std_COLOUR_END=""
 fi
 # }}}
 
@@ -619,7 +620,7 @@ function __STDLIB_API_1_std::log() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_die() { # {{{
-	[[ -n "${*:-}" ]] && std_DEBUG=1 __STDLIB_API_1_std::log >&2 "${std_COLOR_START_RED}FATAL${std_COLOR_END}: " "${*}"
+	[[ -n "${*:-}" ]] && std_DEBUG=1 __STDLIB_API_1_std::log >&2 "${std_COLOUR_START_RED}FATAL${std_COLOUR_END}: " "${*}"
 	__STDLIB_API_1_std::cleanup 1
 
 	# Don't stomp on std_ERRNO
@@ -629,7 +630,7 @@ function __STDLIB_API_1_die() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_error() { # {{{
-	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "${std_COLOR_START_RED}ERROR${std_COLOR_END}: " "${*:-Unspecified error}"
+	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "${std_COLOUR_START_RED}ERROR${std_COLOUR_END}: " "${*:-Unspecified error}"
 
 	# Don't stomp on std_ERRNO
 	return 1
@@ -638,7 +639,7 @@ function __STDLIB_API_1_error() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_warn() { # {{{
-	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "${std_COLOR_START_YELLOW}WARN${std_COLOR_END}:  " "${*:-Unspecified warning}"
+	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "${std_COLOUR_START_YELLOW}WARN${std_COLOUR_END}:  " "${*:-Unspecified warning}"
 
 	# Don't stomp on std_ERRNO
 	return 1
@@ -648,7 +649,7 @@ function __STDLIB_API_1_warn() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_note() { # {{{
-	std_DEBUG=1 __STDLIB_API_1_std::log "${std_COLOR_START_BLUE}NOTICE${std_COLOR_END}:" "${*:-Unspecified notice}"
+	std_DEBUG=1 __STDLIB_API_1_std::log "${std_COLOUR_START_BLUE}NOTICE${std_COLOUR_END}:" "${*:-Unspecified notice}"
 
 	# Don't stomp on std_ERRNO
 	return 0
