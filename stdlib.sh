@@ -254,11 +254,11 @@ declare -a __STDLIB_OWNED_FILES
 declare std_INTERNAL_DEBUG="${SLDEBUG:-0}"
 
 ## Colored output
-std_COLOUR_START_GREEN="\033[32m"
-std_COLOUR_START_BLUE="\033[34m"
-std_COLOUR_START_YELLOW="\033[33m"
-std_COLOUR_START_RED="\033[31m"
-std_COLOUR_END="\033[0m"
+std_COLOUR_START_GREEN="$(tput setaf 2)"
+std_COLOUR_START_BLUE="$(tput setaf 4)"
+std_COLOUR_START_YELLOW="$(tput setaf 3)"
+std_COLOUR_START_RED="$(tput setaf 1)"
+std_COLOUR_END="$(tput sgr0)"
 
 std_COLOUR_OFF="${COLOUR_OFF:-1}"
 if(( std_COLOUR_OFF )); then
