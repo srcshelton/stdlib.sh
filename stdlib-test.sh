@@ -35,10 +35,26 @@ done
 	info "Info"
 	notice "Notice"
 	note "Note"
-	{ local tmpDebug=std_DEBUG; std_DEBUG=1; debug "Debug"; std_DEBUG=tmpDebug; }
+
 	warn "Warning"
 	error "Error"
 	#die "Die"
+
+	waitForRes "Executing foo1"
+	evalRes "echo 'foo' > /dev/null"
+	checkRes f $? "good"
+
+	waitForRes "Executing foo2"
+	evalRes "echo 'foo' > /dev/null"
+	checkRes w 1 "not so good"
+
+	waitForRes "Executing foo3"
+	evalRes "echo 'foo' > /dev/null"
+	checkRes k 1 "not good"
+
+	waitForRes "Executing foo4"
+	evalRes "echo 'foo' > /dev/null"
+	checkRes f 1 "bad"
 
  } # main # }}}
 
