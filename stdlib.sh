@@ -80,7 +80,11 @@ fi # }}}
                             # std::wordsplit
 #export  std_RELEASE="1.5.0" # Add std::inherit, finally make errno functions
                             # work!  Set std_ERRNO where appropriate
-#export std__RELEASE="1.6.0"	# Added colored output tags
+#export std_RELEASE="1.6.0" # Added coloured output tags
+#export std_RELEASE="1.6.1"	# Ehnaced colour setup with optionale external
+							# configuration file, parsing and initialisation
+							# 'Section' helpers enriched with key/value pair
+							# parsing functions
 export std__RELEASE="1.7.0"	# Added command execution functions
 readonly std_RELEASE
 
@@ -146,7 +150,11 @@ EOC
 # Externally set control-variables:
 #
 # STDLIB_WANT_MEMCACHED	- Load native memcached functions;
-# STDLIB_API		- Specify the stdlib API to adhere to.
+# STDLIB_API		- Specify the stdlib API to adhere to;
+# STDLIB_COLOUR_MAP - Specify custom colour map file, default being
+#                     '/usr/local/lib/stdlib.colours';
+# STDLIB_WANT_COLOURISATION - Enables/disables colourised output, using values
+#                             defined in '/usr/local/lib/stdlib.colours'.
 #
 # Exported control-variables:
 #
@@ -286,20 +294,23 @@ readonly STDLIB_STREAM_NONE=4
 readonly STDLIB_STREAM_INTERACTIVE=5
 
 ## Colored output
-std_COLOR_START_GREEN="$(tput setaf 2)"
-std_COLOR_START_BLUE="$(tput setaf 4)"
-std_COLOR_START_YELLOW="$(tput setaf 3)"
-std_COLOR_START_RED="$(tput setaf 1)"
-std_COLOR_END="$(tput sgr0)"
+declare std_COLOUR_MAP_FILE="${STDLIB_COLOUR_MAP:-/usr/local/lib/stdlib.colours}"
+declare std_COLOUR_MAP_SECTION="colours"
 
-std_COLOR_OFF="${COLOR_OFF:-0}"
-if(( std_COLOR_OFF )); then
-	std_COLOR_START_GREEN=""
-	std_COLOR_START_BLUE=""
-	std_COLOR_START_YELLOW=""
-	std_COLOR_START_RED=""
-	std_COLOR_END=""
-fi
+## Colourisation is off by default
+declare std_COLOUR_START_INFO=""
+declare std_COLOUR_START_NOTICE=""
+declare std_COLOUR_START_DEBUG=""
+declare std_COLOUR_START_EXEC=""
+declare std_COLOUR_START_OK=""
+declare std_COLOUR_START_WARNING=""
+declare std_COLOUR_START_FATAL=""
+declare std_COLOUR_START_FAIL=""
+declare std_COLOUR_START_ERROR=""
+declare std_COLOUR_END=""
+
+declare std_COLOUR_ON="${STDLIB_WANT_COLOURISATION:-0}"
+
 # }}}
 
 
@@ -434,6 +445,106 @@ function __STDLIB_oneshot_syntax_check() { # {{{
 	std_ERRNO=0
 	return 0
 } # __STDLIB_oneshot_syntax_check # }}}
+
+
+###############################################################################
+#
+# stdlib.sh - Initialise coloured output
+#
+###############################################################################
+
+function __STDLIB_oneshot_colours_init() { # {{{
+
+	if(( std_COLOUR_ON )); then
+		local foregroundInfo="white"
+		local backgroundInfo=""
+		local modeInfo=""
+
+		local foregroundNotice="blue"
+		local backgroundNotice=""
+		local modeNotice=""
+
+		local foregroundDebug="cyan"
+		local backgroundDebug=""
+		local modeDebug=""
+
+		local foregroundExec="magenta"
+		local backgroundExec=""
+		local modeExec=""
+
+		local foregroundOk="green"
+		local backgroundOk=""
+		local modeOk=""
+
+		local foregroundWarning="yellow"
+		local backgroundWarning=""
+		local modeWarning=""
+
+		local foregroundFatal="red"
+		local backgroundFatal=""
+		local modeFatal="bold"
+
+		local foregroundFail="red"
+		local backgroundFail=""
+		local modeFail=""
+
+		local foregroundError="red"
+		local backgroundError=""
+		local modeError=""
+
+		if [[ ! -f "${std_COLOUR_MAP_FILE}" ]]; then
+			echo >&2 "WARN:   colourmap file not found, using default colours"
+
+		else
+			local colourMap; colourMap="$( __STDLIB_API_1_std::getfilesection "${std_COLOUR_MAP_FILE}" "${std_COLOUR_MAP_SECTION}" )"
+			colourMap="$( __STDLIB_API_1_std::getKeyValuePairs "${colourMap}" )"
+
+			foregroundInfo="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f1 )"
+			foregroundNotice="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "notice" | cut -d',' -f1 )"
+			foregroundDebug="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "debug" | cut -d',' -f1 )"
+			foregroundExec="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "exec" | cut -d',' -f1 )"
+			foregroundOk="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "ok" | cut -d',' -f1 )"
+			foregroundWarning="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "warning" | cut -d',' -f1 )"
+			foregroundFatal="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "fatal" | cut -d',' -f1 )"
+			foregroundFail="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "fail" | cut -d',' -f1 )"
+			foregroundError="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "error" | cut -d',' -f1 )"
+
+			backgroundInfo="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f2 )"
+			backgroundNotice="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f2 )"
+			backgroundDebug="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f2 )"
+			backgroundExec="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f2 )"
+			backgroundOk="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f2 )"
+			backgroundWarning="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f2 )"
+			backgroundFatal="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f2 )"
+			backgroundFail="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f2 )"
+			backgroundError="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f2 )"
+
+			modeInfo="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f3 )"
+			modeNotice="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f3 )"
+			modeDebug="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f3 )"
+			modeExec="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f3 )"
+			modeOk="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f3 )"
+			modeWarning="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f3 )"
+			modeFatal="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f3 )"
+			modeFail="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f3 )"
+			modeError="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f3 )"
+
+		fi
+
+		std_COLOUR_START_INFO="$( __STDLIB_API_1_std::setTextForeground $( __STDLIB_API_1_std::mapColorCode ${foregroundInfo} ) )$( __STDLIB_API_1_std::setTextBackground $( __STDLIB_API_1_std::mapColorCode ${backgroundInfo} ) )$( __STDLIB_API_1_std::setTextMode $( __STDLIB_API_1_std::mapTextMode ${modeInfo} ) )"
+		std_COLOUR_START_NOTICE="$( __STDLIB_API_1_std::setTextForeground $( __STDLIB_API_1_std::mapColorCode ${foregroundNotice} ) )$( __STDLIB_API_1_std::setTextBackground $( __STDLIB_API_1_std::mapColorCode ${backgroundNotice} ) )$( __STDLIB_API_1_std::setTextMode $( __STDLIB_API_1_std::mapTextMode ${modeNotice} ) )"
+		std_COLOUR_START_DEBUG="$( __STDLIB_API_1_std::setTextForeground $( __STDLIB_API_1_std::mapColorCode ${foregroundDebug} ) )$( __STDLIB_API_1_std::setTextBackground $( __STDLIB_API_1_std::mapColorCode ${backgroundDebug} ) )$( __STDLIB_API_1_std::setTextMode $( __STDLIB_API_1_std::mapTextMode ${modeDebug} ) )"
+		std_COLOUR_START_EXEC="$( __STDLIB_API_1_std::setTextForeground $( __STDLIB_API_1_std::mapColorCode ${foregroundExec} ) )$( __STDLIB_API_1_std::setTextBackground $( __STDLIB_API_1_std::mapColorCode ${backgroundExec} ) )$( __STDLIB_API_1_std::setTextMode $( __STDLIB_API_1_std::mapTextMode ${modeExec} ) )"
+		std_COLOUR_START_OK="$( __STDLIB_API_1_std::setTextForeground $( __STDLIB_API_1_std::mapColorCode ${foregroundOk} ) )$( __STDLIB_API_1_std::setTextBackground $( __STDLIB_API_1_std::mapColorCode ${backgroundOk} ) )$( __STDLIB_API_1_std::setTextMode $( __STDLIB_API_1_std::mapTextMode ${modeOk} ) )"
+		std_COLOUR_START_WARNING="$( __STDLIB_API_1_std::setTextForeground $( __STDLIB_API_1_std::mapColorCode ${foregroundWarning} ) )$( __STDLIB_API_1_std::setTextBackground $( __STDLIB_API_1_std::mapColorCode ${backgroundWarning} ) )$( __STDLIB_API_1_std::setTextMode $( __STDLIB_API_1_std::mapTextMode ${modeWarning} ) )"
+		std_COLOUR_START_FATAL="$( __STDLIB_API_1_std::setTextForeground $( __STDLIB_API_1_std::mapColorCode ${foregroundFatal} ) )$( __STDLIB_API_1_std::setTextBackground $( __STDLIB_API_1_std::mapColorCode ${backgroundFatal} ) )$( __STDLIB_API_1_std::setTextMode $( __STDLIB_API_1_std::mapTextMode ${modeFatal} ) )"
+		std_COLOUR_START_FAIL="$( __STDLIB_API_1_std::setTextForeground $( __STDLIB_API_1_std::mapColorCode ${foregroundFail} ) )$( __STDLIB_API_1_std::setTextBackground $( __STDLIB_API_1_std::mapColorCode ${backgroundFail} ) )$( __STDLIB_API_1_std::setTextMode $( __STDLIB_API_1_std::mapTextMode ${modeFail} ) )"
+		std_COLOUR_START_ERROR="$( __STDLIB_API_1_std::setTextForeground $( __STDLIB_API_1_std::mapColorCode ${foregroundError} ) )$( __STDLIB_API_1_std::setTextBackground $( __STDLIB_API_1_std::mapColorCode ${backgroundError} ) )$( __STDLIB_API_1_std::setTextMode $( __STDLIB_API_1_std::mapTextMode ${modeError} ) )"
+		std_COLOUR_END="$( tput sgr0 )"
+	fi
+
+	return 0
+} # __STDLIB_oneshot_colours_init # }}}
 
 
 ###############################################################################
@@ -674,7 +785,7 @@ function __STDLIB_API_1_std::log() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_die() { # {{{
-	[[ -n "${*:-}" ]] && std_DEBUG=1 __STDLIB_API_1_std::log >&2 "[  ${std_COLOR_START_RED}FATAL${std_COLOR_END}  ]" "${*}"
+	[[ -n "${*:-}" ]] && std_DEBUG=1 __STDLIB_API_1_std::log >&2 "[  ${std_COLOUR_START_FATAL}FATAL${std_COLOUR_END}  ]" "${*}"
 	__STDLIB_API_1_std::cleanup 1
 
 	# Don't stomp on std_ERRNO
@@ -684,7 +795,7 @@ function __STDLIB_API_1_die() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_error() { # {{{
-	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "[  ${std_COLOR_START_RED}ERROR${std_COLOR_END}  ]" "${*:-Unspecified error}"
+	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "[  ${std_COLOUR_START_ERROR}ERROR${std_COLOUR_END}  ]" "${*:-Unspecified error}"
 
 	# Don't stomp on std_ERRNO
 	return 1
@@ -693,7 +804,7 @@ function __STDLIB_API_1_error() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_warn() { # {{{
-	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "[ ${std_COLOR_START_YELLOW}WARNING${std_COLOR_END} ]" "${*:-Unspecified warning}"
+	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "[ ${std_COLOUR_START_WARNING}WARNING${std_COLOUR_END} ]" "${*:-Unspecified warning}"
 
 	# Don't stomp on std_ERRNO
 	return 1
@@ -703,7 +814,7 @@ function __STDLIB_API_1_warn() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_note() { # {{{
-	std_DEBUG=1 __STDLIB_API_1_std::log "[ ${std_COLOR_START_BLUE}NOTICE${std_COLOR_END}  ]" "${*:-Unspecified notice}"
+	std_DEBUG=1 __STDLIB_API_1_std::log "[ ${std_COLOUR_START_NOTICE}NOTICE${std_COLOUR_END}  ]" "${*:-Unspecified notice}"
 
 	# Don't stomp on std_ERRNO
 	return 0
@@ -716,7 +827,7 @@ function __STDLIB_API_1_notice() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_info() { # {{{
-	std_DEBUG=1 __STDLIB_API_1_std::log "[  INFO   ]" "${*:-Unspecified message}"
+	std_DEBUG=1 __STDLIB_API_1_std::log "[  ${std_COLOUR_START_INFO}INFO${std_COLOUR_END}   ]" "${*:-Unspecified message}"
 
 	# Don't stomp on std_ERRNO
 	return 0
@@ -728,7 +839,7 @@ function __STDLIB_API_1_debug() { # {{{
 	local message="${1:-Unspecified message}"
 	local -i level=${2:-$STDLIB_DEBUG_NORMAL}
 
-	(( $std_DEBUG == $level )) && __STDLIB_API_1_std::log >&2 "[  DEBUG  ]" "${message}"
+	(( $std_DEBUG == $level )) && __STDLIB_API_1_std::log >&2 "[  ${std_COLOUR_START_DEBUG}DEBUG${std_COLOUR_END}  ]" "${message}"
 
 	# Don't stomp on std_ERRNO
 	return $(( ! std_DEBUG ))
@@ -796,8 +907,8 @@ function __STDLIB_API_1_waitForRes() { # {{{
 
 	(( $std_DEBUG == $STDLIB_DEBUG_NORMAL )) && newLine=1
 
-	(( !newLine ))  &&  std_DEBUG=1 __STDLIB_API_1_std::log -n "[  EXEC   ]" "${message} "
-	(( newLine ))  &&   std_DEBUG=1 __STDLIB_API_1_std::log "[  EXEC   ]" "${message} "
+	(( !newLine ))  &&  std_DEBUG=1 __STDLIB_API_1_std::log -n "[  ${std_COLOUR_START_EXEC}EXEC${std_COLOUR_END}   ]" "${message} "
+	(( newLine ))  &&   std_DEBUG=1 __STDLIB_API_1_std::log "[  ${std_COLOUR_START_EXEC}EXEC${std_COLOUR_END}   ]" "${message} "
 
 	std_ERRNO=0
 	return 0
@@ -828,7 +939,7 @@ function __STDLIB_API_1_showRes() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_resOk() { # {{{
-	__STDLIB_API_1_showRes "${std_COLOR_START_GREEN}OK${std_COLOR_END}" "${@:-}"
+	__STDLIB_API_1_showRes "${std_COLOUR_START_OK}OK${std_COLOUR_END}" "${@:-}"
 
 	# Don't stomp on std_ERRNO
 	return 0
@@ -838,7 +949,7 @@ function __STDLIB_API_1_resOk() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_resWarning() { # {{{
-	__STDLIB_API_1_showRes "${std_COLOR_START_YELLOW}WARNING${std_COLOR_END}" "${@:-}"
+	__STDLIB_API_1_showRes "${std_COLOUR_START_WARNING}WARNING${std_COLOUR_END}" "${@:-}"
 
 	# Don't stomp on std_ERRNO
 	return 1
@@ -847,7 +958,7 @@ function __STDLIB_API_1_resWarning() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_resKo() { # {{{
-	__STDLIB_API_1_showRes "${std_COLOR_START_RED}FAIL${std_COLOR_END}" "${@:-}"
+	__STDLIB_API_1_showRes "${std_COLOUR_START_FAIL}FAIL${std_COLOUR_END}" "${@:-}"
 
 	# Don't stomp on std_ERRNO
 	return 1
@@ -857,7 +968,7 @@ function __STDLIB_API_1_resKo() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_resFail() { # {{{
-	__STDLIB_API_1_showRes "${std_COLOR_START_RED}FAIL${std_COLOR_END}" "${@:-}"
+	__STDLIB_API_1_showRes "${std_COLOUR_START_FAIL}FAIL${std_COLOUR_END}" "${@:-}"
 	die
 
 	# Dead code, die will immediately quit
@@ -871,7 +982,7 @@ function __STDLIB_API_1_callAndDie() { # {{{
 	local functionName="${1:-}" ; shift
 	local data="${*:-}"
 
-	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "[  ${std_COLOR_START_RED}FATAL${std_COLOR_END}  ]" "${data}"
+	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "[  ${std_COLOUR_START_FATAL}FATAL${std_COLOUR_END}  ]" "${data}"
 	[[ -n "${functionName}" ]]  &&  eval "${functionName}"
 	__STDLIB_API_1_std::cleanup 1
 
@@ -986,13 +1097,168 @@ function __STDLIB_API_1_checkRes() { # {{{
 			resFail "${message}"
 		fi
 	else
-		resOk
+		resOk "${message}"
 	fi
 
 	# std_ERRNO is set in evalRes
 
 	return $res
 } # __STDLIB_API_1_checkRes # }}}
+
+
+###############################################################################
+#
+# stdlib.sh - Standard functions - Map color words to color codes
+#
+###############################################################################
+
+function __STDLIB_API_1_std::mapColorCode() { # {{{
+	local param_colorWord="${1:-}"
+	local -i colorCode=0
+
+	#[[ ! -n "${param_colorWord:-}" ]] && { echo >&2 "Undefined colour"; return 1; }
+	[[ ! -n "${param_colorWord:-}" ]] && return 1
+
+	case $param_colorWord in
+		black)
+			colorCode=0
+			;;
+
+		red)
+			colorCode=1
+			;;
+
+		green)
+			colorCode=2
+			;;
+
+		yellow)
+			colorCode=3
+			;;
+
+		blue)
+			colorCode=4
+			;;
+
+		magenta)
+			colorCode=5
+			;;
+
+		cyan)
+			colorCode=6
+			;;
+
+		white)
+			colorCode=7
+			;;
+
+		*)
+			echo >&2 "Unsupported colour"
+			return 1
+			;;
+	esac
+
+	respond "${colorCode}"
+	return 0
+
+} # __STDLIB_API_1_std::mapColorCode() # }}}
+
+
+###############################################################################
+#
+# stdlib.sh - Standard functions - Map color words to color codes
+#
+###############################################################################
+
+function __STDLIB_API_1_std::mapTextMode() { # {{{
+	local param_modeWord="${1:-}"
+	local modeCode=""
+
+	#[[ ! -n "${param_modeWord:-}" ]] && { echo >&2 "Undefined mode"; return 1; }
+	[[ ! -n "${param_modeWord:-}" ]] && return 1
+
+	case $param_modeWord in
+		bold)
+			modeCode="bold"
+			;;
+
+		dim)
+			modeCode="dim"
+			;;
+
+		underline)
+			modeCode="smul"
+			;;
+
+		reverse)
+			modeCode="rev"
+			;;
+
+		standout)
+			modeCode="smso"
+			;;
+
+		*)
+			echo >&2 "Unsupported mode"
+			return 1
+			;;
+	esac
+
+	respond "${modeCode}"
+	return 0
+
+} # __STDLIB_API_1_std::mapTextMode() # }}}
+
+
+###############################################################################
+#
+# stdlib.sh - Standard functions - Set foreground color
+#
+###############################################################################
+
+function __STDLIB_API_1_std::setTextForeground() { # {{{
+	local param_colorCode="${1:-}"
+	local retColor=""
+
+	[[ ! -z "${param_colorCode:-}" ]] && retColor="$( tput setaf ${param_colorCode} )"
+
+	respond "${retColor}"
+	return 0
+} # __STDLIB_API_1_std::setTextForeground # }}}
+
+
+###############################################################################
+#
+# stdlib.sh - Standard functions - Set background color
+#
+###############################################################################
+
+function __STDLIB_API_1_std::setTextBackground() { # {{{
+	local param_colorCode="${1:-}"
+	local retColor=""
+
+	[[ ! -z "${param_colorCode:-}" ]] && retColor="$( tput setab ${param_colorCode} )"
+
+	respond "${retColor}"
+	return 0
+} # __STDLIB_API_1_std::setTextBackground # }}}
+
+
+###############################################################################
+#
+# stdlib.sh - Standard functions - Set text mode
+#
+###############################################################################
+
+function __STDLIB_API_1_std::setTextMode() { # {{{
+	local param_modeCode="${1:-}"
+	local retCode=""
+
+	[[ ! -z "${param_modeCode:-}" ]] && retCode="$( tput ${param_modeCode} )"
+
+	respond "${retCode}"
+	return 0
+} # __STDLIB_API_1_std::setTextMode # }}}
 
 
 ###############################################################################
@@ -2036,6 +2302,45 @@ function __STDLIB_API_1_std::getfilesection() { # {{{
 
 ###############################################################################
 #
+# stdlib.sh - Helper functions - Get key/value pairs off of Windows-style .ini
+#                                sections.
+#
+###############################################################################
+
+function __STDLIB_API_1_std::getKeyValuePairs() { # {{{
+	local param_section="${1:-}"
+	local retList=""
+
+	retList="$( echo "${param_section:-1}" | sed -r 's/#.*$// ; /^[^[:space:]]+\.[^[:space:]]+\s*=/s/\./_/' | grep -Ev '^\s*$' | sed -r 's/\s*=\s*/=/' )"
+
+	respond "${retList}"
+
+	return 0
+} # __STDLIB_API_1_std::getKeyValuePairs # }}}
+
+
+###############################################################################
+#
+# stdlib.sh - Helper functions - Get key/value pairs off of Windows-style .ini
+#                                sections.
+#
+###############################################################################
+
+function __STDLIB_API_1_std::getValueByKey() { # {{{
+	local param_pairList="${1:-}"
+	local param_key="${2:-}"
+	local retValue=""
+
+	retValue="$( grep -E "^${param_key:-}=" <<<"${param_pairList:-1}" | cut -d'=' -f2- )"
+
+	respond "${retValue}"
+
+	return 0
+} # __STDLIB_API_1_std::getValueByKey # }}}
+
+
+###############################################################################
+#
 # stdlib.sh - Helper functions - Map HTTP return-codes to shell return codes
 #
 ###############################################################################
@@ -2661,6 +2966,9 @@ unset __STDLIB_oneshot_syntax_check
 
 __STDLIB_oneshot_errno_init
 unset __STDLIB_oneshot_errno_init
+
+__STDLIB_oneshot_colours_init
+unset __STDLIB_oneshot_colours_init
 
 declare -i __STDLIB_API="${STDLIB_API:-1}"
 case "${__STDLIB_API}" in
