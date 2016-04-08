@@ -5,11 +5,13 @@
 ################################################################################
 
 [colours]
-ok = green
-notice = blue
-warning = yellow
-fatal = red
-fail = red
-error = red
-debug = cyan
-info = white
+## name = <fg color>,[<bg color>],[<fg mode>]
+ok = green,,
+notice = blue,,
+warning = yellow,,
+fatal = red,,
+fail = red,,bold
+error = red,,
+debug = cyan,,
+exec = magenta,,
+info = white,,
