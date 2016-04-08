@@ -137,7 +137,15 @@ EOC
 # Externally set control-variables:
 #
 # STDLIB_WANT_MEMCACHED	- Load native memcached functions;
-# STDLIB_API		- Specify the stdlib API to adhere to.
+# STDLIB_API		- Specify the stdlib API to adhere to;
+# STDLIB_WANT_COLOURISATION - Enable colourised output; if enabled, the
+#                             following will apply:
+# STDLIB_COLOUR_OK - color code for 'ok' log tags;
+# STDLIB_COLOUR_NOTICE - color code for 'notice' log tags;
+# STDLIB_COLOUR_WARNING - color code for 'warning' log tags;
+# STDLIB_COLOUR_FATAL - color code for 'fatal' log tags;
+# STDLIB_COLOUR_FAIL - color code for 'fail' log tags;
+# STDLIB_COLOUR_ERROR - color code for 'error' log tags.
 #
 # Exported control-variables:
 #
@@ -254,19 +262,35 @@ declare -a __STDLIB_OWNED_FILES
 declare std_INTERNAL_DEBUG="${SLDEBUG:-0}"
 
 ## Colored output
-std_COLOUR_START_GREEN="$(tput setaf 2)"
-std_COLOUR_START_BLUE="$(tput setaf 4)"
-std_COLOUR_START_YELLOW="$(tput setaf 3)"
-std_COLOUR_START_RED="$(tput setaf 1)"
-std_COLOUR_END="$(tput sgr0)"
 
-std_COLOUR_OFF="${COLOUR_OFF:-1}"
-if(( std_COLOUR_OFF )); then
-	std_COLOUR_START_GREEN=""
-	std_COLOUR_START_BLUE=""
-	std_COLOUR_START_YELLOW=""
-	std_COLOUR_START_RED=""
-	std_COLOUR_END=""
+## Default colours
+std_COLOUR_GREEN="$(tput setaf 2)"
+std_COLOUR_BLUE="$(tput setaf 4)"
+std_COLOUR_YELLOW="$(tput setaf 3)"
+std_COLOUR_RED="$(tput setaf 1)"
+std_COLOUR_NONE="$(tput sgr0)"
+
+## TODO: read colours from system config file(s), if available
+
+## Colourisation is off by default
+std_COLOUR_START_OK=""
+std_COLOUR_START_NOTICE=""
+std_COLOUR_START_WARNING=""
+std_COLOUR_START_FATAL=""
+std_COLOUR_START_FAIL=""
+std_COLOUR_START_ERROR=""
+std_COLOUR_END=""
+
+std_COLOUR_ON="${STDLIB_WANT_COLOURISATION:-0}"
+if(( std_COLOUR_ON )); then
+	## Assign colour codes: if custom values not provided, use defaults
+	std_COLOUR_START_OK="${STDLIB_COLOUR_OK:-${std_COLOUR_GREEN}}"
+	std_COLOUR_START_NOTICE="${STDLIB_COLOUR_NOTICE:-${std_COLOUR_BLUE}}"
+	std_COLOUR_START_WARNING="${STDLIB_COLOUR_WARNING:-${std_COLOUR_YELLOW}}"
+	std_COLOUR_START_FATAL="${STDLIB_COLOUR_FATAL:-${std_COLOUR_RED}}"
+	std_COLOUR_START_FAIL="${STDLIB_COLOUR_FAIL:-${std_COLOUR_RED}}"
+	std_COLOUR_START_ERROR="${STDLIB_COLOUR_ERROR:-${std_COLOUR_RED}}"
+	std_COLOUR_END="${std_COLOUR_NONE}"
 fi
 # }}}
 
@@ -620,7 +644,7 @@ function __STDLIB_API_1_std::log() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_die() { # {{{
-	[[ -n "${*:-}" ]] && std_DEBUG=1 __STDLIB_API_1_std::log >&2 "${std_COLOUR_START_RED}FATAL${std_COLOUR_END}: " "${*}"
+	[[ -n "${*:-}" ]] && std_DEBUG=1 __STDLIB_API_1_std::log >&2 "${std_COLOUR_START_FATAL}FATAL${std_COLOUR_END}: " "${*}"
 	__STDLIB_API_1_std::cleanup 1
 
 	# Don't stomp on std_ERRNO
@@ -630,7 +654,7 @@ function __STDLIB_API_1_die() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_error() { # {{{
-	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "${std_COLOUR_START_RED}ERROR${std_COLOUR_END}: " "${*:-Unspecified error}"
+	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "${std_COLOUR_START_ERROR}ERROR${std_COLOUR_END}: " "${*:-Unspecified error}"
 
 	# Don't stomp on std_ERRNO
 	return 1
@@ -639,7 +663,7 @@ function __STDLIB_API_1_error() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_warn() { # {{{
-	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "${std_COLOUR_START_YELLOW}WARN${std_COLOUR_END}:  " "${*:-Unspecified warning}"
+	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "${std_COLOUR_START_WARNING}WARN${std_COLOUR_END}:  " "${*:-Unspecified warning}"
 
 	# Don't stomp on std_ERRNO
 	return 1
@@ -649,7 +673,7 @@ function __STDLIB_API_1_warn() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_note() { # {{{
-	std_DEBUG=1 __STDLIB_API_1_std::log "${std_COLOUR_START_BLUE}NOTICE${std_COLOUR_END}:" "${*:-Unspecified notice}"
+	std_DEBUG=1 __STDLIB_API_1_std::log "${std_COLOUR_START_NOTICE}NOTICE${std_COLOUR_END}:" "${*:-Unspecified notice}"
 
 	# Don't stomp on std_ERRNO
 	return 0
