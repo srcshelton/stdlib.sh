@@ -1,0 +1,15 @@
+################################################################################
+#
+# stdlib.colours
+#
+################################################################################
+
+[colours]
+ok = green
+notice = blue
+warning = yellow
+fatal = red
+fail = red
+error = red
+debug = cyan
+info = white

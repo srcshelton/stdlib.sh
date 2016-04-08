@@ -78,9 +78,13 @@ fi # }}}
                             # improve MacOS compatibility
 #export std_RELEASE="1.4.7" # Fix warnings identified by shellcheck.net, add
                             # std::wordsplit
-export  std_RELEASE="1.5.0" # Add std::inherit, finally make errno functions
+#export  std_RELEASE="1.5.0" # Add std::inherit, finally make errno functions
                             # work!  Set std_ERRNO where appropriate
-#export std__RELEASE="1.6.0"	# Added coloured output tags
+#export std_RELEASE="1.6.0" # Added coloured output tags
+export std_RELEASE="1.6.1"	# Ehnaced colour setup with optionale external
+							# configuration file, parsing and initialisation
+							# 'Section' helpers enriched with key/value pair
+							# parsing functions
 readonly std_RELEASE
 
 
@@ -138,14 +142,10 @@ EOC
 #
 # STDLIB_WANT_MEMCACHED	- Load native memcached functions;
 # STDLIB_API		- Specify the stdlib API to adhere to;
-# STDLIB_WANT_COLOURISATION - Enable colourised output; if enabled, the
-#                             following will apply:
-# STDLIB_COLOUR_OK - color code for 'ok' log tags;
-# STDLIB_COLOUR_NOTICE - color code for 'notice' log tags;
-# STDLIB_COLOUR_WARNING - color code for 'warning' log tags;
-# STDLIB_COLOUR_FATAL - color code for 'fatal' log tags;
-# STDLIB_COLOUR_FAIL - color code for 'fail' log tags;
-# STDLIB_COLOUR_ERROR - color code for 'error' log tags.
+# STDLIB_COLOUR_MAP - Specify custom colour map file, default being
+#                     '/usr/local/lib/stdlib.colours';
+# STDLIB_WANT_COLOURISATION - Enables/disables colourised output, using values
+#                             defined in '/usr/local/lib/stdlib.colours'.
 #
 # Exported control-variables:
 #
@@ -262,36 +262,22 @@ declare -a __STDLIB_OWNED_FILES
 declare std_INTERNAL_DEBUG="${SLDEBUG:-0}"
 
 ## Colored output
-
-## Default colours
-std_COLOUR_GREEN="$(tput setaf 2)"
-std_COLOUR_BLUE="$(tput setaf 4)"
-std_COLOUR_YELLOW="$(tput setaf 3)"
-std_COLOUR_RED="$(tput setaf 1)"
-std_COLOUR_NONE="$(tput sgr0)"
-
-## TODO: read colours from system config file(s), if available
+declare std_COLOUR_MAP_FILE="${STDLIB_COLOUR_MAP:-/usr/local/lib/stdlib.colours}"
+declare std_COLOUR_MAP_SECTION="colours"
 
 ## Colourisation is off by default
-std_COLOUR_START_OK=""
-std_COLOUR_START_NOTICE=""
-std_COLOUR_START_WARNING=""
-std_COLOUR_START_FATAL=""
-std_COLOUR_START_FAIL=""
-std_COLOUR_START_ERROR=""
-std_COLOUR_END=""
+declare std_COLOUR_START_INFO=""
+declare std_COLOUR_START_NOTICE=""
+declare std_COLOUR_START_DEBUG=""
+declare std_COLOUR_START_OK=""
+declare std_COLOUR_START_WARNING=""
+declare std_COLOUR_START_FATAL=""
+declare std_COLOUR_START_FAIL=""
+declare std_COLOUR_START_ERROR=""
+declare std_COLOUR_END=""
 
-std_COLOUR_ON="${STDLIB_WANT_COLOURISATION:-0}"
-if(( std_COLOUR_ON )); then
-	## Assign colour codes: if custom values not provided, use defaults
-	std_COLOUR_START_OK="${STDLIB_COLOUR_OK:-${std_COLOUR_GREEN}}"
-	std_COLOUR_START_NOTICE="${STDLIB_COLOUR_NOTICE:-${std_COLOUR_BLUE}}"
-	std_COLOUR_START_WARNING="${STDLIB_COLOUR_WARNING:-${std_COLOUR_YELLOW}}"
-	std_COLOUR_START_FATAL="${STDLIB_COLOUR_FATAL:-${std_COLOUR_RED}}"
-	std_COLOUR_START_FAIL="${STDLIB_COLOUR_FAIL:-${std_COLOUR_RED}}"
-	std_COLOUR_START_ERROR="${STDLIB_COLOUR_ERROR:-${std_COLOUR_RED}}"
-	std_COLOUR_END="${std_COLOUR_NONE}"
-fi
+declare std_COLOUR_ON="${STDLIB_WANT_COLOURISATION:-0}"
+
 # }}}
 
 
@@ -426,6 +412,66 @@ function __STDLIB_oneshot_syntax_check() { # {{{
 	std_ERRNO=0
 	return 0
 } # __STDLIB_oneshot_syntax_check # }}}
+
+
+###############################################################################
+#
+# stdlib.sh - Initialise coloured output
+#
+###############################################################################
+
+function __STDLIB_oneshot_colours_init() { # {{{
+
+	if(( std_COLOUR_ON )); then
+		declare colourInfo
+		declare colourNotice
+		declare colourDebug
+		declare colourOk
+		declare colourWarning
+		declare colourFatal
+		declare colourFail
+		declare colourError
+
+		if [[ ! -f "${std_COLOUR_MAP_FILE}" ]]; then
+			echo >&2 "WARN:   colourmap file not found, using default colours"
+
+			colourInfo="$( __STDLIB_API_1_std::mapColorCode "white" )"
+			colourNotice="$( __STDLIB_API_1_std::mapColorCode "blue" )"
+			colourDebug="$( __STDLIB_API_1_std::mapColorCode "cyan" )"
+			colourOk="$( __STDLIB_API_1_std::mapColorCode "green" )"
+			colourWarning="$( __STDLIB_API_1_std::mapColorCode "yellow" )"
+			colourFatal="$( __STDLIB_API_1_std::mapColorCode "red" )"
+			colourFail="$( __STDLIB_API_1_std::mapColorCode "red" )"
+			colourError="$( __STDLIB_API_1_std::mapColorCode "red" )"
+
+		else
+			declare colourMap; colourMap="$( __STDLIB_API_1_std::getfilesection "${std_COLOUR_MAP_FILE}" "${std_COLOUR_MAP_SECTION}" )"
+			colourMap="$( __STDLIB_API_1_std::getKeyValuePairs "${colourMap}" )"
+
+			colourInfo="$( __STDLIB_API_1_std::mapColorCode $( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" ) )"
+			colourNotice="$( __STDLIB_API_1_std::mapColorCode $( __STDLIB_API_1_std::getValueByKey "${colourMap}" "notice" ) )"
+			colourDebug="$( __STDLIB_API_1_std::mapColorCode $( __STDLIB_API_1_std::getValueByKey "${colourMap}" "debug" ) )"
+			colourOk="$( __STDLIB_API_1_std::mapColorCode $( __STDLIB_API_1_std::getValueByKey "${colourMap}" "ok" ) )"
+			colourWarning="$( __STDLIB_API_1_std::mapColorCode $( __STDLIB_API_1_std::getValueByKey "${colourMap}" "warning" ) )"
+			colourFatal="$( __STDLIB_API_1_std::mapColorCode $( __STDLIB_API_1_std::getValueByKey "${colourMap}" "fatal" ) )"
+			colourFail="$( __STDLIB_API_1_std::mapColorCode $( __STDLIB_API_1_std::getValueByKey "${colourMap}" "fail" ) )"
+			colourError="$( __STDLIB_API_1_std::mapColorCode $( __STDLIB_API_1_std::getValueByKey "${colourMap}" "error" ) )"
+
+		fi
+
+		std_COLOUR_START_INFO="$( tput setaf ${colourInfo} )"
+		std_COLOUR_START_NOTICE="$( tput setaf ${colourNotice} )"
+		std_COLOUR_START_DEBUG="$( tput setaf ${colourDebug} )"
+		std_COLOUR_START_OK="$( tput setaf ${colourOk} )"
+		std_COLOUR_START_WARNING="$( tput setaf ${colourWarning} )"
+		std_COLOUR_START_FATAL="$( tput setaf ${colourFatal} )"
+		std_COLOUR_START_FAIL="$( tput setaf ${colourFail} )"
+		std_COLOUR_START_ERROR="$( tput setaf ${colourError} )"
+		std_COLOUR_END="$(tput sgr0)"
+	fi
+
+	return 0
+} # __STDLIB_oneshot_colours_init # }}}
 
 
 ###############################################################################
@@ -686,7 +732,7 @@ function __STDLIB_API_1_notice() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_info() { # {{{
-	std_DEBUG=1 __STDLIB_API_1_std::log "INFO:  " "${*:-Unspecified message}"
+	std_DEBUG=1 __STDLIB_API_1_std::log "${std_COLOUR_START_INFO}INFO${std_COLOUR_END}:  " "${*:-Unspecified message}"
 
 	# Don't stomp on std_ERRNO
 	return 0
@@ -695,12 +741,67 @@ function __STDLIB_API_1_info() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_debug() { # {{{
-	(( std_DEBUG )) && __STDLIB_API_1_std::log >&2 "DEBUG: " "${*:-Unspecified message}"
+	(( std_DEBUG )) && __STDLIB_API_1_std::log >&2 "${std_COLOUR_START_DEBUG}DEBUG${std_COLOUR_END}: " "${*:-Unspecified message}"
 
 	# Don't stomp on std_ERRNO
 	return $(( ! std_DEBUG ))
 } # __STDLIB_API_1_debug # }}}
 
+###############################################################################
+#
+# stdlib.sh - Standard functions - Map color words to color codes
+#
+###############################################################################
+
+function __STDLIB_API_1_std::mapColorCode() { # {{{
+	local param_colorWord="${1:-}"
+	local -i colorCode=0
+
+	[[ ! -n "${param_colorWord:-}" ]] && { echo >&2 "Undefined colour"; return 1; }
+
+	case $param_colorWord in
+		black)
+			colorCode=0
+			;;
+
+		red)
+			colorCode=1
+			;;
+
+		green)
+			colorCode=2
+			;;
+
+		yellow)
+			colorCode=3
+			;;
+
+		blue)
+			colorCode=4
+			;;
+
+		magenta)
+			colorCode=5
+			;;
+
+		cyan)
+			colorCode=6
+			;;
+
+		white)
+			colorCode=7
+			;;
+
+		*)
+			echo >&2 "Unsupported colour"
+			return 1
+			;;
+	esac
+
+	respond "${colorCode}"
+	return 0
+
+} # __STDLIB_API_1_std::mapColorCode() # }}}
 
 ###############################################################################
 #
@@ -1742,6 +1843,45 @@ function __STDLIB_API_1_std::getfilesection() { # {{{
 
 ###############################################################################
 #
+# stdlib.sh - Helper functions - Get key/value pairs off of Windows-style .ini
+#                                sections.
+#
+###############################################################################
+
+function __STDLIB_API_1_std::getKeyValuePairs() { # {{{
+	local param_section="${1:-}"
+	local retList=""
+
+	retList="$( echo "${param_section:-1}" | sed -r 's/#.*$// ; /^[^[:space:]]+\.[^[:space:]]+\s*=/s/\./_/' | grep -Ev '^\s*$' | sed -r 's/\s*=\s*/=/' )"
+
+	respond "${retList}"
+
+	return 0
+} # __STDLIB_API_1_std::getKeyValuePairs # }}}
+
+
+###############################################################################
+#
+# stdlib.sh - Helper functions - Get key/value pairs off of Windows-style .ini
+#                                sections.
+#
+###############################################################################
+
+function __STDLIB_API_1_std::getValueByKey() { # {{{
+	local param_pairList="${1:-}"
+	local param_key="${2:-}"
+	local retValue=""
+
+	retValue="$( grep -E "^${param_key:-}=" <<<"${param_pairList:-1}" | cut -d'=' -f2- )"
+
+	respond "${retValue}"
+
+	return 0
+} # __STDLIB_API_1_std::getValueByKey # }}}
+
+
+###############################################################################
+#
 # stdlib.sh - Helper functions - Map HTTP return-codes to shell return codes
 #
 ###############################################################################
@@ -2367,6 +2507,9 @@ unset __STDLIB_oneshot_syntax_check
 
 __STDLIB_oneshot_errno_init
 unset __STDLIB_oneshot_errno_init
+
+__STDLIB_oneshot_colours_init
+unset __STDLIB_oneshot_colours_init
 
 declare -i __STDLIB_API="${STDLIB_API:-1}"
 case "${__STDLIB_API}" in
