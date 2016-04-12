@@ -1,6 +1,6 @@
 # Copyright 2013-2016 Stuart Shelton
 # Distributed under the terms of the GNU General Public License v2
-# 
+#
 # stdlib.sh standardised shared shell functions...
 
 # Pull this file into external scripts as follows:
@@ -78,8 +78,14 @@ fi # }}}
                             # improve MacOS compatibility
 #export std_RELEASE="1.4.7" # Fix warnings identified by shellcheck.net, add
                             # std::wordsplit
-export  std_RELEASE="1.5.0" # Add std::inherit, finally make errno functions
+#export  std_RELEASE="1.5.0" # Add std::inherit, finally make errno functions
                             # work!  Set std_ERRNO where appropriate
+#export std_RELEASE="1.6.0" # Added coloured output tags
+#export std_RELEASE="1.6.1"	# Ehnaced colour setup with optionale external
+							# configuration file, parsing and initialisation
+							# 'Section' helpers enriched with key/value pair
+							# parsing functions
+export std__RELEASE="1.7.0"	# Added command execution functions
 readonly std_RELEASE
 
 
@@ -103,6 +109,14 @@ cat >/dev/null <<EOC
 EOC
 #
 # ... near the top of the calling script.
+
+declare std_PRETEND
+# Standard usage is:
+#
+std_PRETEND="${PRETEND:-0}"
+
+declare std_WRAPLOG
+std_WRAPLOG="${WRAPLOG:-0}"
 
 
 # If this is not overridden, then logging will be disabled:
@@ -136,7 +150,11 @@ EOC
 # Externally set control-variables:
 #
 # STDLIB_WANT_MEMCACHED	- Load native memcached functions;
-# STDLIB_API		- Specify the stdlib API to adhere to.
+# STDLIB_API		- Specify the stdlib API to adhere to;
+# STDLIB_COLOUR_MAP - Specify custom colour map file, default being
+#                     '/usr/local/lib/stdlib.colours';
+# STDLIB_WANT_COLOURISATION - Enables/disables colourised output, using values
+#                             defined in '/usr/local/lib/stdlib.colours'.
 #
 # Exported control-variables:
 #
@@ -251,6 +269,52 @@ export std_ERRNO=0
 declare -a __STDLIB_OWNED_FILES
 
 declare std_INTERNAL_DEBUG="${SLDEBUG:-0}"
+
+# Command controlled execution
+export STDLIB_EXEC_COMMAND=""
+export STDLIB_EXEC_RESULT=""
+export STDLIB_EXEC_STATUS=0
+
+readonly STDLIB_EXEC_WARNONERR="w"
+readonly STDLIB_EXEC_ERRONERR="k"
+readonly STDLIB_EXEC_FAILONERR="f"
+
+
+## debug verbosity
+readonly STDLIB_DEBUG_NORMAL=1
+readonly STDLIB_DEBUG_SSH=2
+readonly STDLIB_DEBUG_RSYNC=3
+readonly STDLIB_DEBUG_REMOTE=4
+readonly STDLIB_DEBUG_JSON=5
+readonly STDLIB_DEBUG_PARALLEL=6
+readonly STDLIB_DEBUG_FUNCTION=7
+
+## command stream capture
+readonly STDLIB_STREAM_NORMAL=0
+readonly STDLIB_STREAM_STDOUT=1
+readonly STDLIB_STREAM_STDERR=2
+readonly STDLIB_STREAM_ALL=3
+readonly STDLIB_STREAM_NONE=4
+readonly STDLIB_STREAM_INTERACTIVE=5
+
+## Colored output
+declare std_COLOUR_MAP_FILE="${STDLIB_COLOUR_MAP:-/usr/local/lib/stdlib.colours}"
+declare std_COLOUR_MAP_SECTION="colours"
+
+## Colourisation is off by default
+declare std_COLOUR_START_INFO=""
+declare std_COLOUR_START_NOTICE=""
+declare std_COLOUR_START_DEBUG=""
+declare std_COLOUR_START_EXEC=""
+declare std_COLOUR_START_OK=""
+declare std_COLOUR_START_WARNING=""
+declare std_COLOUR_START_FATAL=""
+declare std_COLOUR_START_FAIL=""
+declare std_COLOUR_START_ERROR=""
+declare std_COLOUR_END=""
+
+declare std_COLOUR_ON="${STDLIB_WANT_COLOURISATION:-0}"
+
 # }}}
 
 
@@ -389,6 +453,106 @@ function __STDLIB_oneshot_syntax_check() { # {{{
 
 ###############################################################################
 #
+# stdlib.sh - Initialise coloured output
+#
+###############################################################################
+
+function __STDLIB_oneshot_colours_init() { # {{{
+
+	if(( std_COLOUR_ON )); then
+		local foregroundInfo="white"
+		local backgroundInfo=""
+		local modeInfo=""
+
+		local foregroundNotice="blue"
+		local backgroundNotice=""
+		local modeNotice=""
+
+		local foregroundDebug="cyan"
+		local backgroundDebug=""
+		local modeDebug=""
+
+		local foregroundExec="magenta"
+		local backgroundExec=""
+		local modeExec=""
+
+		local foregroundOk="green"
+		local backgroundOk=""
+		local modeOk=""
+
+		local foregroundWarning="yellow"
+		local backgroundWarning=""
+		local modeWarning=""
+
+		local foregroundFatal="red"
+		local backgroundFatal=""
+		local modeFatal="bold"
+
+		local foregroundFail="red"
+		local backgroundFail=""
+		local modeFail=""
+
+		local foregroundError="red"
+		local backgroundError=""
+		local modeError=""
+
+		if [[ ! -f "${std_COLOUR_MAP_FILE}" ]]; then
+			echo >&2 "WARN:   colourmap file not found, using default colours"
+
+		else
+			local colourMap; colourMap="$( __STDLIB_API_1_std::getfilesection "${std_COLOUR_MAP_FILE}" "${std_COLOUR_MAP_SECTION}" )"
+			colourMap="$( __STDLIB_API_1_std::getKeyValuePairs "${colourMap}" )"
+
+			foregroundInfo="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f1 )"
+			foregroundNotice="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "notice" | cut -d',' -f1 )"
+			foregroundDebug="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "debug" | cut -d',' -f1 )"
+			foregroundExec="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "exec" | cut -d',' -f1 )"
+			foregroundOk="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "ok" | cut -d',' -f1 )"
+			foregroundWarning="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "warning" | cut -d',' -f1 )"
+			foregroundFatal="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "fatal" | cut -d',' -f1 )"
+			foregroundFail="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "fail" | cut -d',' -f1 )"
+			foregroundError="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "error" | cut -d',' -f1 )"
+
+			backgroundInfo="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f2 )"
+			backgroundNotice="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f2 )"
+			backgroundDebug="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f2 )"
+			backgroundExec="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f2 )"
+			backgroundOk="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f2 )"
+			backgroundWarning="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f2 )"
+			backgroundFatal="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f2 )"
+			backgroundFail="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f2 )"
+			backgroundError="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f2 )"
+
+			modeInfo="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f3 )"
+			modeNotice="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f3 )"
+			modeDebug="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f3 )"
+			modeExec="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f3 )"
+			modeOk="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f3 )"
+			modeWarning="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f3 )"
+			modeFatal="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f3 )"
+			modeFail="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f3 )"
+			modeError="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f3 )"
+
+		fi
+
+		std_COLOUR_START_INFO="$( __STDLIB_API_1_std::setTextForeground $( __STDLIB_API_1_std::mapColorCode ${foregroundInfo} ) )$( __STDLIB_API_1_std::setTextBackground $( __STDLIB_API_1_std::mapColorCode ${backgroundInfo} ) )$( __STDLIB_API_1_std::setTextMode $( __STDLIB_API_1_std::mapTextMode ${modeInfo} ) )"
+		std_COLOUR_START_NOTICE="$( __STDLIB_API_1_std::setTextForeground $( __STDLIB_API_1_std::mapColorCode ${foregroundNotice} ) )$( __STDLIB_API_1_std::setTextBackground $( __STDLIB_API_1_std::mapColorCode ${backgroundNotice} ) )$( __STDLIB_API_1_std::setTextMode $( __STDLIB_API_1_std::mapTextMode ${modeNotice} ) )"
+		std_COLOUR_START_DEBUG="$( __STDLIB_API_1_std::setTextForeground $( __STDLIB_API_1_std::mapColorCode ${foregroundDebug} ) )$( __STDLIB_API_1_std::setTextBackground $( __STDLIB_API_1_std::mapColorCode ${backgroundDebug} ) )$( __STDLIB_API_1_std::setTextMode $( __STDLIB_API_1_std::mapTextMode ${modeDebug} ) )"
+		std_COLOUR_START_EXEC="$( __STDLIB_API_1_std::setTextForeground $( __STDLIB_API_1_std::mapColorCode ${foregroundExec} ) )$( __STDLIB_API_1_std::setTextBackground $( __STDLIB_API_1_std::mapColorCode ${backgroundExec} ) )$( __STDLIB_API_1_std::setTextMode $( __STDLIB_API_1_std::mapTextMode ${modeExec} ) )"
+		std_COLOUR_START_OK="$( __STDLIB_API_1_std::setTextForeground $( __STDLIB_API_1_std::mapColorCode ${foregroundOk} ) )$( __STDLIB_API_1_std::setTextBackground $( __STDLIB_API_1_std::mapColorCode ${backgroundOk} ) )$( __STDLIB_API_1_std::setTextMode $( __STDLIB_API_1_std::mapTextMode ${modeOk} ) )"
+		std_COLOUR_START_WARNING="$( __STDLIB_API_1_std::setTextForeground $( __STDLIB_API_1_std::mapColorCode ${foregroundWarning} ) )$( __STDLIB_API_1_std::setTextBackground $( __STDLIB_API_1_std::mapColorCode ${backgroundWarning} ) )$( __STDLIB_API_1_std::setTextMode $( __STDLIB_API_1_std::mapTextMode ${modeWarning} ) )"
+		std_COLOUR_START_FATAL="$( __STDLIB_API_1_std::setTextForeground $( __STDLIB_API_1_std::mapColorCode ${foregroundFatal} ) )$( __STDLIB_API_1_std::setTextBackground $( __STDLIB_API_1_std::mapColorCode ${backgroundFatal} ) )$( __STDLIB_API_1_std::setTextMode $( __STDLIB_API_1_std::mapTextMode ${modeFatal} ) )"
+		std_COLOUR_START_FAIL="$( __STDLIB_API_1_std::setTextForeground $( __STDLIB_API_1_std::mapColorCode ${foregroundFail} ) )$( __STDLIB_API_1_std::setTextBackground $( __STDLIB_API_1_std::mapColorCode ${backgroundFail} ) )$( __STDLIB_API_1_std::setTextMode $( __STDLIB_API_1_std::mapTextMode ${modeFail} ) )"
+		std_COLOUR_START_ERROR="$( __STDLIB_API_1_std::setTextForeground $( __STDLIB_API_1_std::mapColorCode ${foregroundError} ) )$( __STDLIB_API_1_std::setTextBackground $( __STDLIB_API_1_std::mapColorCode ${backgroundError} ) )$( __STDLIB_API_1_std::setTextMode $( __STDLIB_API_1_std::mapTextMode ${modeError} ) )"
+		std_COLOUR_END="$( tput sgr0 )"
+	fi
+
+	return 0
+} # __STDLIB_oneshot_colours_init # }}}
+
+
+###############################################################################
+#
 # stdlib.sh - Standard overridable functions - Initialisation & clean-up
 #
 ###############################################################################
@@ -517,8 +681,18 @@ function __STDLIB_API_1_std::usage() { # {{{
 ###############################################################################
 
 function __STDLIB_API_1_std::wrap() { # {{{
+	local outputFlag=""
+
+	local param_logFlag="${1:-}" ;  [[ "${param_logFlag}" == "-n" ]] && shift
 	local prefix="${1:-}" ; shift
 	local text="${*:-}"
+
+	if [[ "${param_logFlag}" == "-n" ]]; then
+		outputFlag="-n"
+
+	else
+		param_logFlag=""
+	fi
 
 	[[ -n "${text:-}" ]] || {
 		std_ERRNO=$( errsymbol EARGS )
@@ -533,19 +707,19 @@ function __STDLIB_API_1_std::wrap() { # {{{
 
 	if [[ -n "${prefix:-}" ]]; then
 		if (( columns > ( ${#prefix} + 2 ) )); then
-			  output "${text}" \
+			  output "${outputFlag}" "${text}" \
 			| fold -sw "$(( columns - ( ${#prefix} + 1 ) ))" \
 			| sed "s/^/${prefix} /"
 		else
-			  output "${text}" \
+			  output "${outputFlag}" "${text}" \
 			| sed "s/^/${prefix} /"
 		fi
 	else
 		if (( columns > 1 )); then
-			  output "${text}" \
+			  output "${outputFlag}" "${text}" \
 			| fold -sw "$(( columns - 1))"
 		else
-			  output "${text}"
+			  output "${outputFlag}" "${text}"
 		fi
 	fi
 
@@ -554,8 +728,18 @@ function __STDLIB_API_1_std::wrap() { # {{{
 } # __STDLIB_API_1_std::wrap # }}}
 
 function __STDLIB_API_1_std::log() { # {{{
+	local outputFlag=""
+
+	local param_logFlag="${1:-}" ;  [[ "${param_logFlag}" == "-n" ]] && shift
 	local prefix="${1:-${std_LIB}}" ; shift
 	local data="${*:-}" message
+
+	if [[ "${param_logFlag}" == "-n" ]]; then
+		outputFlag="-n"
+
+	else
+		param_logFlag=""
+	fi
 
 	# Assume that log messages should be written to a file (unless we're
 	# debugging) ... otherwise, use note(), warn(), or error() to output
@@ -586,10 +770,12 @@ function __STDLIB_API_1_std::log() { # {{{
 	# We don't care whether std_LOGFILE exists, but we do care whether it's
 	# set...
 	[[ -n "${std_LOGFILE:-}" && "${std_LOGFILE}" != "syslog" ]] \
-		&& output "${message}" >>"${std_LOGFILE}" 2>&1
+		&& { [[ ! -n "${outputFlag}" ]] && output "${message}" >>"${std_LOGFILE}" 2>&1; [[ -n "${outputFlag}" ]] && output "${outputFlag}" "${message}" >>"${std_LOGFILE}" 2>&1; }
 
 	if (( std_DEBUG )); then
-		__STDLIB_API_1_std::wrap "${prefix}" "${data}"
+		## 'output' adds a trailing white space when ${outputFlag} is empty...
+		(( !std_WRAPLOG )) && { [[ ! -n "${outputFlag}" ]] && output "${prefix} ${data}"; [[ -n "${outputFlag}" ]] && output "${outputFlag}" "${prefix} ${data}"; }
+		(( std_WRAPLOG )) && __STDLIB_API_1_std::wrap "${param_logFlag}" "${prefix}" "${data}"
 	fi
 
 	# Don't stomp on std_ERRNO
@@ -603,7 +789,7 @@ function __STDLIB_API_1_std::log() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_die() { # {{{
-	[[ -n "${*:-}" ]] && std_DEBUG=1 __STDLIB_API_1_std::log >&2 "FATAL: " "${*}"
+	[[ -n "${*:-}" ]] && std_DEBUG=1 __STDLIB_API_1_std::log >&2 "[  ${std_COLOUR_START_FATAL}FATAL${std_COLOUR_END}  ]" "${*}"
 	__STDLIB_API_1_std::cleanup 1
 
 	# Don't stomp on std_ERRNO
@@ -613,7 +799,7 @@ function __STDLIB_API_1_die() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_error() { # {{{
-	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "ERROR: " "${*:-Unspecified error}"
+	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "[  ${std_COLOUR_START_ERROR}ERROR${std_COLOUR_END}  ]" "${*:-Unspecified error}"
 
 	# Don't stomp on std_ERRNO
 	return 1
@@ -622,7 +808,7 @@ function __STDLIB_API_1_error() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_warn() { # {{{
-	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "WARN:  " "${*:-Unspecified warning}"
+	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "[ ${std_COLOUR_START_WARNING}WARNING${std_COLOUR_END} ]" "${*:-Unspecified warning}"
 
 	# Don't stomp on std_ERRNO
 	return 1
@@ -632,7 +818,7 @@ function __STDLIB_API_1_warn() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_note() { # {{{
-	std_DEBUG=1 __STDLIB_API_1_std::log "NOTICE:" "${*:-Unspecified notice}"
+	std_DEBUG=1 __STDLIB_API_1_std::log "[ ${std_COLOUR_START_NOTICE}NOTICE${std_COLOUR_END}  ]" "${*:-Unspecified notice}"
 
 	# Don't stomp on std_ERRNO
 	return 0
@@ -645,7 +831,7 @@ function __STDLIB_API_1_notice() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_info() { # {{{
-	std_DEBUG=1 __STDLIB_API_1_std::log "INFO:  " "${*:-Unspecified message}"
+	std_DEBUG=1 __STDLIB_API_1_std::log "[  ${std_COLOUR_START_INFO}INFO${std_COLOUR_END}   ]" "${*:-Unspecified message}"
 
 	# Don't stomp on std_ERRNO
 	return 0
@@ -654,11 +840,442 @@ function __STDLIB_API_1_info() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_debug() { # {{{
-	(( std_DEBUG )) && __STDLIB_API_1_std::log >&2 "DEBUG: " "${*:-Unspecified message}"
+	local message="${1:-Unspecified message}"
+	local -i level=${2:-$STDLIB_DEBUG_NORMAL}
+
+	(( $std_DEBUG == $level )) && __STDLIB_API_1_std::log >&2 "[  ${std_COLOUR_START_DEBUG}DEBUG${std_COLOUR_END}  ]" "${message}"
 
 	# Don't stomp on std_ERRNO
 	return $(( ! std_DEBUG ))
 } # __STDLIB_API_1_debug # }}}
+
+###############################################################################
+#
+# stdlib.sh - Command execution
+#
+# The following set of function are meant to ease usage of control variables
+# like DEBUG and PRETEND over sub commands, preserving preamble and output text.
+#
+# - The command being executed is stored in STDLIB_EXEC_COMMAND.
+# - Execution status code is always captured, saved in STDLIB_EXEC_STATUS and
+#   then evaluated.
+# - When the function return value is required, then the command is evaluated in
+#   a subshell and the execution return value is stored in STDLIB_EXEC_RESULT
+#
+# The default behaviour is to always use a subshell, display command's stdout
+# content, store both status and return value, not display command result.
+# This behaviour can be controlled by use of 'std_STREAM_XXX' parameter, in
+# order to be able to execute commands from completely silent output to full
+# interactive mode, while still being able to use the output control framework
+# provided by the function set.
+#
+# A number of support functions is provided for special handling of results and
+# display control.
+#
+# Typical usage should look as follows:
+#
+# local dir="/usr/local/bin"
+# waitForRes "Chdir to '${dir}'"
+# evalRes "cd ${dir}"
+# checkRes f "cannot chdir to '${dir}'"
+#
+# Normal output would be something like:
+#
+# [ EXEC  ] Chdir to '/usr/local/bin' [OK]
+#
+# If called with DEBUG=1, the output would be:
+#
+# [ EXEC  ] Chdir to '/usr/local/bin'
+# [ DEBUG ] About to run: 'cd /usr/local/bin'
+#  [OK]
+#
+# If called with PRETEND=1, the output would be:
+#
+# [ EXEC  ] Chdir to '/usr/local/bin'
+# [ DEBUG ] Pretend to run: 'cd /usr/local/bin'
+#  [OK]
+#
+###############################################################################
+
+# This function may be overridden
+#
+# The idea is to log a message (with optional new line at the end),
+# wait for exectuion to finish, then
+# log the overall result at the end of the same line
+# with one of the closing-tag function below.
+function __STDLIB_API_1_waitForRes() { # {{{
+	local message="${1:-}"
+	local -i newLine=${2:-0}
+
+
+	(( $std_PRETEND )) && message="(Pretend) ${message}"
+
+	(( $std_DEBUG == $STDLIB_DEBUG_NORMAL )) && newLine=1
+
+	(( !newLine ))  &&  std_DEBUG=1 __STDLIB_API_1_std::log -n "[  ${std_COLOUR_START_EXEC}EXEC${std_COLOUR_END}   ]" "${message} "
+	(( newLine ))  &&   std_DEBUG=1 __STDLIB_API_1_std::log "[  ${std_COLOUR_START_EXEC}EXEC${std_COLOUR_END}   ]" "${message} "
+
+	std_ERRNO=0
+	return 0
+
+} # __STDLIB_API_1_waitForRes # }}}
+
+
+# This function may be overridden
+#
+# Core closing tag function.
+# It takes car of displaying the closing tag and an optional message that match
+# the opening execution tag
+#
+function __STDLIB_API_1_showRes() { # {{{
+	local prefix="${1:-${std_LIB}}" ; shift
+	local data="${*:-}"
+	local pre=""
+	local post=""
+
+	if [[ -n "${data}" ]]; then
+		pre="- "
+		post=" "
+	fi
+
+	std_DEBUG=1 __STDLIB_API_1_std::log " [ ${prefix}" "${pre}${data}${post}]"
+
+	std_ERRNO=0
+	return 0
+} # __STDLIB_API_1_showRes # }}}
+
+
+# This function may be overridden
+#
+# Success closing tag
+#
+function __STDLIB_API_1_resOk() { # {{{
+	__STDLIB_API_1_showRes "${std_COLOUR_START_OK}OK${std_COLOUR_END}" "${@:-}"
+
+	# Don't stomp on std_ERRNO
+	return 0
+} # __STDLIB_API_1_resOk # }}}
+
+
+# This function may be overridden
+#
+# Warning closing tag
+#
+function __STDLIB_API_1_resWarning() { # {{{
+	__STDLIB_API_1_showRes "${std_COLOUR_START_WARNING}WARNING${std_COLOUR_END}" "${@:-}"
+
+	# Don't stomp on std_ERRNO
+	return 1
+} # __STDLIB_API_1_resWarning # }}}
+
+# This function may be overridden
+#
+# Error closing tag
+#
+function __STDLIB_API_1_resKo() { # {{{
+	__STDLIB_API_1_showRes "${std_COLOUR_START_FAIL}FAIL${std_COLOUR_END}" "${@:-}"
+
+	# Don't stomp on std_ERRNO
+	return 1
+} # __STDLIB_API_1_resKo # }}}
+
+
+# This function may be overridden
+#
+# Fatal closing tag
+#
+function __STDLIB_API_1_resFail() { # {{{
+	__STDLIB_API_1_showRes "${std_COLOUR_START_FAIL}FAIL${std_COLOUR_END}" "${@:-}"
+	die
+
+	# Dead code, die will immediately quit
+	return 1
+} # __STDLIB_API_1_resFail # }}}
+
+
+# This function may be overridden
+#
+# Logs tag, calls function, then dies
+#
+function __STDLIB_API_1_callAndDie() { # {{{
+	local functionName="${1:-}" ; shift
+	local data="${*:-}"
+
+	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "[  ${std_COLOUR_START_FATAL}FATAL${std_COLOUR_END}  ]" "${data}"
+	[[ -n "${functionName}" ]]  &&  eval "${functionName}"
+	__STDLIB_API_1_std::cleanup 1
+
+	# Dead code, cleanup will call die and immediately quit
+	return 1
+} # __STDLIB_API_1_callAndDie # }}}
+
+
+# This function may be overridden
+#
+# Executes subcommands by:
+# 1. checking 'PRETEND' option
+# 2. capturing output stream, as specified
+# 3. returning ret value and exit code from subcommand to parent caller
+# Dedicated global vars are used to enhance flexibility on return values
+# handling, although this is limited to one level of nested calls
+#
+# Implementation now relies on 'capture' in order to avoid duplicated logic for
+# stream capture
+#
+function __STDLIB_API_1_evalRes() { # {{{
+	local command="${1:-${STDLIB_EXEC_COMMAND}}"
+	local -i param_selectStream=${2:-$STDLIB_STREAM_NORMAL}
+
+	STDLIB_EXEC_COMMAND="${command}"
+	STDLIB_EXEC_RESULT=""
+	STDLIB_EXEC_STATUS=0
+
+	(( $std_PRETEND )) && debug "Pretend to run '${command}'" $STDLIB_DEBUG_FUNCTION
+	(( !std_PRETEND )) && debug "About to run '${command}'" $STDLIB_DEBUG_FUNCTION
+
+	if (( !std_PRETEND )); then
+		STDLIB_EXEC_RESULT="$( __STDLIB_API_1_std::capture "$param_selectStream" "${command}" )"
+		STDLIB_EXEC_STATUS=$?
+	fi
+
+	debug "*** S:evalRes() ***" $STDLIB_DEBUG_FUNCTION
+	debug "MYSTATUS: '${STDLIB_EXEC_STATUS}'" $STDLIB_DEBUG_FUNCTION
+	debug "MYRESULT: '\n${STDLIB_EXEC_RESULT}\n'" $STDLIB_DEBUG_FUNCTION
+	debug "*** E:evalRes() ***" $STDLIB_DEBUG_FUNCTION
+
+	respond "${STDLIB_EXEC_RESULT}"
+	debug "MYSTATUS: '${STDLIB_EXEC_STATUS}'" $STDLIB_DEBUG_FUNCTION
+
+	if (( STDLIB_EXEC_STATUS )); then
+		std_ERRNO="$( errsymbol ESUBSHELL )"
+	else
+		std_ERRNO="$( errsymbol ENOERROR )"
+	fi
+
+	return $STDLIB_EXEC_STATUS
+
+} #__STDLIB_API_1_evalRes # }}}
+
+
+# This function may be overridden
+#
+# Wrapper to evalRes(), for backward compatibility
+#
+function __STDLIB_API_1_getRes() { # {{{
+	local command="${1:-${STDLIB_EXEC_COMMAND}}"
+	local -i param_selectStream=${2:-$STDLIB_STREAM_NORMAL}
+
+	evalRes "${command}" $param_selectStream
+
+	# std_ERRNO is set in evalRes
+
+	respond "${STDLIB_EXEC_RESULT}"
+	return $STDLIB_EXEC_STATUS
+} #__STDLIB_API_1_getRes # }}}
+
+
+# This function may be overridden
+#
+# It implements standard/common checks over return values from evalRes.
+# Anything else needs to be explicitly handled, like:
+#
+# waitForRes "Executing something"
+# evalRes "echo 'hello!'"
+# if (( $STDLIB_EXEC_STATUS == 0 )); then
+#   resOk
+#
+# elif (( $STDLIB_EXEC_STATUS == 128 )); then
+#   resFail "Got the dreaded 128 code!"
+#
+# elif [[ "${STDLIB_EXEC_RESULT}" == "hello!" ]]; then
+#   resOk "It worked! :O"
+#
+# else
+#   resWarning "Something is not right here..."
+# fi
+#
+function __STDLIB_API_1_checkRes() { # {{{
+	local option="${1:-${STDLIB_EXEC_WARNONERR}}"
+	local -i res=${2:-$STDLIB_EXEC_STATUS}
+	local message="${3:-}"
+
+	if [[ "${option}" != "${STDLIB_EXEC_WARNONERR}" ]]  &&  [[ "${option}" != "${STDLIB_EXEC_ERRONERR}" ]]  &&  [[ "${option}" != "${STDLIB_EXEC_FAILONERR}" ]]; then
+		std_ERRNO="$( errsymbol EARGS )"
+		resFail "invalid evaluation option"
+
+	elif (( $res )); then
+		if [[ "${option}" == "${STDLIB_EXEC_WARNONERR}" ]]; then
+			resWarning "${message}"
+
+		elif [[ "${option}" == "${STDLIB_EXEC_ERRONERR}" ]]; then
+			resKo "${message}"
+
+		elif [[ "${option}" == "${STDLIB_EXEC_FAILONERR}" ]]; then
+			resFail "${message}"
+		fi
+	else
+		resOk "${message}"
+	fi
+
+	# std_ERRNO is set in evalRes
+
+	return $res
+} # __STDLIB_API_1_checkRes # }}}
+
+
+###############################################################################
+#
+# stdlib.sh - Standard functions - Map color words to color codes
+#
+###############################################################################
+
+function __STDLIB_API_1_std::mapColorCode() { # {{{
+	local param_colorWord="${1:-}"
+	local -i colorCode=0
+
+	#[[ ! -n "${param_colorWord:-}" ]] && { echo >&2 "Undefined colour"; return 1; }
+	[[ ! -n "${param_colorWord:-}" ]] && return 1
+
+	case $param_colorWord in
+		black)
+			colorCode=0
+			;;
+
+		red)
+			colorCode=1
+			;;
+
+		green)
+			colorCode=2
+			;;
+
+		yellow)
+			colorCode=3
+			;;
+
+		blue)
+			colorCode=4
+			;;
+
+		magenta)
+			colorCode=5
+			;;
+
+		cyan)
+			colorCode=6
+			;;
+
+		white)
+			colorCode=7
+			;;
+
+		*)
+			echo >&2 "Unsupported colour"
+			return 1
+			;;
+	esac
+
+	respond "${colorCode}"
+	return 0
+
+} # __STDLIB_API_1_std::mapColorCode() # }}}
+
+
+###############################################################################
+#
+# stdlib.sh - Standard functions - Map color words to color codes
+#
+###############################################################################
+
+function __STDLIB_API_1_std::mapTextMode() { # {{{
+	local param_modeWord="${1:-}"
+	local modeCode=""
+
+	#[[ ! -n "${param_modeWord:-}" ]] && { echo >&2 "Undefined mode"; return 1; }
+	[[ ! -n "${param_modeWord:-}" ]] && return 1
+
+	case $param_modeWord in
+		bold)
+			modeCode="bold"
+			;;
+
+		dim)
+			modeCode="dim"
+			;;
+
+		underline)
+			modeCode="smul"
+			;;
+
+		reverse)
+			modeCode="rev"
+			;;
+
+		standout)
+			modeCode="smso"
+			;;
+
+		*)
+			echo >&2 "Unsupported mode"
+			return 1
+			;;
+	esac
+
+	respond "${modeCode}"
+	return 0
+
+} # __STDLIB_API_1_std::mapTextMode() # }}}
+
+
+###############################################################################
+#
+# stdlib.sh - Standard functions - Set foreground color
+#
+###############################################################################
+
+function __STDLIB_API_1_std::setTextForeground() { # {{{
+	local param_colorCode="${1:-}"
+	local retColor=""
+
+	[[ ! -z "${param_colorCode:-}" ]] && retColor="$( tput setaf ${param_colorCode} )"
+
+	respond "${retColor}"
+	return 0
+} # __STDLIB_API_1_std::setTextForeground # }}}
+
+
+###############################################################################
+#
+# stdlib.sh - Standard functions - Set background color
+#
+###############################################################################
+
+function __STDLIB_API_1_std::setTextBackground() { # {{{
+	local param_colorCode="${1:-}"
+	local retColor=""
+
+	[[ ! -z "${param_colorCode:-}" ]] && retColor="$( tput setab ${param_colorCode} )"
+
+	respond "${retColor}"
+	return 0
+} # __STDLIB_API_1_std::setTextBackground # }}}
+
+
+###############################################################################
+#
+# stdlib.sh - Standard functions - Set text mode
+#
+###############################################################################
+
+function __STDLIB_API_1_std::setTextMode() { # {{{
+	local param_modeCode="${1:-}"
+	local retCode=""
+
+	[[ ! -z "${param_modeCode:-}" ]] && retCode="$( tput ${param_modeCode} )"
+
+	respond "${retCode}"
+	return 0
+} # __STDLIB_API_1_std::setTextMode # }}}
 
 
 ###############################################################################
@@ -704,6 +1321,7 @@ function __STDLIB_oneshot_errno_init() { # {{{
 	__STDLIB_errsym[4]="ENOEXE"		; __STDLIB_errstr[4]="Required executable not found"		; (( count ++ )) ;
 	__STDLIB_errsym[5]="ESYNTAX"		; __STDLIB_errstr[5]="Syntax error"				; (( count ++ )) ;
 	__STDLIB_errsym[6]="EACCESS"		; __STDLIB_errstr[6]="File access denied"			; (( count ++ )) ;
+	__STDLIB_errsym[7]="ESUBSHELL"		; __STDLIB_errstr[6]="Subshell execution failure"			; (( count ++ )) ;
 
 	# These should appear, in order, last:
 	__STDLIB_errsym[ ${count} ]="EERROR"	; __STDLIB_errstr[ ${count} ]="Undefined error"			; (( count ++ )) ;
@@ -1545,18 +2163,24 @@ function __STDLIB_API_1_std::capture() { # {{{
 	# Return the stdout or stderr output of a command in a consistent way.
 
 	case "${stream:-}" in
-		1|out|stdout)
+		$STDLIB_STREAM_STDOUT|out|stdout)
 			redirect="2>/dev/null"
 			;;
-		2|err|stderr)
+		$STDLIB_STREAM_STDERR|err|stderr)
 			# N.B.: Ordering - ensure we still get stderr on &1
 			redirect="2>&1 >/dev/null"
 			;;
-		all|both)
+		$STDLIB_STREAM_ALL|all|both)
 			redirect="2>&1"
 			;;
-		none)
+		$STDLIB_STREAM_NONE|none)
 			redirect=">/dev/null 2>&1"
+			;;
+		$STDLIB_STREAM_INTERACTIVE|interactive)
+			redirect=""
+			;;
+		$STDLIB_STREAM_NORMAL|normal)
+			redirect=""
 			;;
 		*)
 			error "Invalid parameters: prototype '${FUNCNAME[0]##*_}" \
@@ -1567,16 +2191,31 @@ function __STDLIB_API_1_std::capture() { # {{{
 			;;
 	esac
 
-	if ! type -t "${cmd:-}" >/dev/null; then
-		error "Invalid parameters: <command> '${cmd:-}' not found"
-		std_ERRNO=$( errsymbol EARGS )
-		return 1
+	## NB: 'type' check requires that args are passed separately from the cmd
+	##     to be executed. This may render specifying subcommands complex,
+	##     especially when one wants to prepend them with env variables like
+	##     DEBUG=1. Therefore, we can either pass cmd and args separately and
+	##     use the old logic to check availability of the command being invoked,
+	##     or pass the subcommand as a single param and skip the check.
+	if [[ ! -z "${args}" ]]; then
+		if ! type -t "${cmd:-}" >/dev/null; then
+			error "Invalid parameters: <command> '${cmd:-}' not found"
+			std_ERRNO=$( errsymbol EARGS )
+			return 1
+		fi
 	fi
 
 	type -pf stdbuf >/dev/null 2>&1 && stdbuf="stdbuf -eL"
 
-	response="$( eval "${stdbuf:+${stdbuf} }${cmd} ${args[*]} ${redirect}" )" ; rc=${?}
-	output "${response:-}"
+	## Subshell execution with output capture prevents interactive mode
+	if [[ "${stream}" == "${STDLIB_STREAM_INTERACTIVE}" || "${stream}" == "interactive" ]]; then
+		eval "${stdbuf:+${stdbuf} }${cmd} ${args[*]} ${redirect}"
+		rc=${?}
+
+	else
+		response="$( eval "${stdbuf:+${stdbuf} }${cmd} ${args[*]} ${redirect}" )" ; rc=${?}
+		output "${response:-}"
+	fi
 
 	std_ERRNO=0
 	return ${rc}
@@ -1697,6 +2336,45 @@ function __STDLIB_API_1_std::getfilesection() { # {{{
 	std_ERRNO=0
 	return ${?}
 } # __STDLIB_API_1_std::getfilesection # }}}
+
+
+###############################################################################
+#
+# stdlib.sh - Helper functions - Get key/value pairs off of Windows-style .ini
+#                                sections.
+#
+###############################################################################
+
+function __STDLIB_API_1_std::getKeyValuePairs() { # {{{
+	local param_section="${1:-}"
+	local retList=""
+
+	retList="$( echo "${param_section:-1}" | sed -r 's/#.*$// ; /^[^[:space:]]+\.[^[:space:]]+\s*=/s/\./_/' | grep -Ev '^\s*$' | sed -r 's/\s*=\s*/=/' )"
+
+	respond "${retList}"
+
+	return 0
+} # __STDLIB_API_1_std::getKeyValuePairs # }}}
+
+
+###############################################################################
+#
+# stdlib.sh - Helper functions - Get key/value pairs off of Windows-style .ini
+#                                sections.
+#
+###############################################################################
+
+function __STDLIB_API_1_std::getValueByKey() { # {{{
+	local param_pairList="${1:-}"
+	local param_key="${2:-}"
+	local retValue=""
+
+	retValue="$( grep -E "^${param_key:-}=" <<<"${param_pairList:-1}" | cut -d'=' -f2- )"
+
+	respond "${retValue}"
+
+	return 0
+} # __STDLIB_API_1_std::getValueByKey # }}}
 
 
 ###############################################################################
@@ -2326,6 +3004,9 @@ unset __STDLIB_oneshot_syntax_check
 
 __STDLIB_oneshot_errno_init
 unset __STDLIB_oneshot_errno_init
+
+__STDLIB_oneshot_colours_init
+unset __STDLIB_oneshot_colours_init
 
 declare -i __STDLIB_API="${STDLIB_API:-1}"
 case "${__STDLIB_API}" in

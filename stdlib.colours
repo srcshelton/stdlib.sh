@@ -1,0 +1,17 @@
+################################################################################
+#
+# stdlib.colours
+#
+################################################################################
+
+[colours]
+## name = <fg color>,[<bg color>],[<fg mode>]
+ok = green,,
+notice = blue,,
+warning = yellow,,
+fatal = red,,
+fail = red,,bold
+error = red,,
+debug = cyan,,
+exec = magenta,,
+info = white,,
