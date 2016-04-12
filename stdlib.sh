@@ -275,6 +275,10 @@ export STDLIB_EXEC_COMMAND=""
 export STDLIB_EXEC_RESULT=""
 export STDLIB_EXEC_STATUS=0
 
+readonly STDLIB_EXEC_WARNONERR="w"
+readonly STDLIB_EXEC_ERRONERR="k"
+readonly STDLIB_EXEC_FAILONERR="f"
+
 
 ## debug verbosity
 readonly STDLIB_DEBUG_NORMAL=1
@@ -894,6 +898,7 @@ function __STDLIB_API_1_debug() { # {{{
 ###############################################################################
 
 # This function may be overridden
+#
 # The idea is to log a message (with optional new line at the end),
 # wait for exectuion to finish, then
 # log the overall result at the end of the same line
@@ -918,6 +923,10 @@ function __STDLIB_API_1_waitForRes() { # {{{
 
 # This function may be overridden
 #
+# Core closing tag function.
+# It takes car of displaying the closing tag and an optional message that match
+# the opening execution tag
+#
 function __STDLIB_API_1_showRes() { # {{{
 	local prefix="${1:-${std_LIB}}" ; shift
 	local data="${*:-}"
@@ -938,6 +947,8 @@ function __STDLIB_API_1_showRes() { # {{{
 
 # This function may be overridden
 #
+# Success closing tag
+#
 function __STDLIB_API_1_resOk() { # {{{
 	__STDLIB_API_1_showRes "${std_COLOUR_START_OK}OK${std_COLOUR_END}" "${@:-}"
 
@@ -948,6 +959,8 @@ function __STDLIB_API_1_resOk() { # {{{
 
 # This function may be overridden
 #
+# Warning closing tag
+#
 function __STDLIB_API_1_resWarning() { # {{{
 	__STDLIB_API_1_showRes "${std_COLOUR_START_WARNING}WARNING${std_COLOUR_END}" "${@:-}"
 
@@ -956,6 +969,8 @@ function __STDLIB_API_1_resWarning() { # {{{
 } # __STDLIB_API_1_resWarning # }}}
 
 # This function may be overridden
+#
+# Error closing tag
 #
 function __STDLIB_API_1_resKo() { # {{{
 	__STDLIB_API_1_showRes "${std_COLOUR_START_FAIL}FAIL${std_COLOUR_END}" "${@:-}"
@@ -967,6 +982,8 @@ function __STDLIB_API_1_resKo() { # {{{
 
 # This function may be overridden
 #
+# Fatal closing tag
+#
 function __STDLIB_API_1_resFail() { # {{{
 	__STDLIB_API_1_showRes "${std_COLOUR_START_FAIL}FAIL${std_COLOUR_END}" "${@:-}"
 	die
@@ -977,6 +994,8 @@ function __STDLIB_API_1_resFail() { # {{{
 
 
 # This function may be overridden
+#
+# Logs tag, calls function, then dies
 #
 function __STDLIB_API_1_callAndDie() { # {{{
 	local functionName="${1:-}" ; shift
@@ -993,6 +1012,16 @@ function __STDLIB_API_1_callAndDie() { # {{{
 
 # This function may be overridden
 #
+# Executes subcommands by:
+# 1. checking 'PRETEND' option
+# 2. capturing output stream, as specified
+# 3. returning ret value and exit code from subcommand to parent caller
+# Dedicated global vars are used to enhance flexibility on return values
+# handling, although this is limited to one level of nested calls
+#
+# Implementation now relies on 'capture' in order to avoid duplicated logic for
+# stream capture
+#
 function __STDLIB_API_1_evalRes() { # {{{
 	local command="${1:-${STDLIB_EXEC_COMMAND}}"
 	local -i param_selectStream=${2:-$STDLIB_STREAM_NORMAL}
@@ -1005,40 +1034,8 @@ function __STDLIB_API_1_evalRes() { # {{{
 	(( !std_PRETEND )) && debug "About to run '${command}'" $STDLIB_DEBUG_FUNCTION
 
 	if (( !std_PRETEND )); then
-		case $param_selectStream in
-			$STDLIB_STREAM_NORMAL)
-				STDLIB_EXEC_RESULT="$( eval "${command}" )"
-				STDLIB_EXEC_STATUS=$?
-				;;
-
-			$STDLIB_STREAM_STDOUT)
-				STDLIB_EXEC_RESULT="$( eval "${command}" >&1 2>/dev/null )"
-				STDLIB_EXEC_STATUS=$?
-				;;
-
-			$STDLIB_STREAM_STDERR)
-				STDLIB_EXEC_RESULT="$( eval "${command}" >&2 1>/dev/null )"
-				STDLIB_EXEC_STATUS=$?
-				;;
-
-			$STDLIB_STREAM_ALL)
-				STDLIB_EXEC_RESULT="$( eval "${command}" 2>&1 )"
-				STDLIB_EXEC_STATUS=$?
-				;;
-
-			$STDLIB_STREAM_NONE)
-				STDLIB_EXEC_RESULT="$( eval "${command}" &>/dev/null )"
-				STDLIB_EXEC_STATUS=$?
-				;;
-
-			$STDLIB_STREAM_INTERACTIVE)
-				eval "${command}"
-				STDLIB_EXEC_STATUS=$?
-				;;
-			*)
-				die "wrong stream selected: '$param_selectStream'"
-				;;
-		esac
+		STDLIB_EXEC_RESULT="$( __STDLIB_API_1_std::capture "$param_selectStream" "${command}" )"
+		STDLIB_EXEC_STATUS=$?
 	fi
 
 	debug "*** S:evalRes() ***" $STDLIB_DEBUG_FUNCTION
@@ -1062,8 +1059,10 @@ function __STDLIB_API_1_evalRes() { # {{{
 
 # This function may be overridden
 #
+# Wrapper to evalRes(), for backward compatibility
+#
 function __STDLIB_API_1_getRes() { # {{{
-	local command="${1:-}"
+	local command="${1:-${STDLIB_EXEC_COMMAND}}"
 	local -i param_selectStream=${2:-$STDLIB_STREAM_NORMAL}
 
 	evalRes "${command}" $param_selectStream
@@ -1077,23 +1076,41 @@ function __STDLIB_API_1_getRes() { # {{{
 
 # This function may be overridden
 #
+# It implements standard/common checks over return values from evalRes.
+# Anything else needs to be explicitly handled, like:
+#
+# waitForRes "Executing something"
+# evalRes "echo 'hello!'"
+# if (( $STDLIB_EXEC_STATUS == 0 )); then
+#   resOk
+#
+# elif (( $STDLIB_EXEC_STATUS == 128 )); then
+#   resFail "Got the dreaded 128 code!"
+#
+# elif [[ "${STDLIB_EXEC_RESULT}" == "hello!" ]]; then
+#   resOk "It worked! :O"
+#
+# else
+#   resWarning "Something is not right here..."
+# fi
+#
 function __STDLIB_API_1_checkRes() { # {{{
-	local option="${1:-w}"
+	local option="${1:-${STDLIB_EXEC_WARNONERR}}"
 	local -i res=${2:-$STDLIB_EXEC_STATUS}
 	local message="${3:-}"
 
-	if [[ "${option}" != "w" ]]  &&  [[ "${option}" != "k" ]]  &&  [[ "${option}" != "f" ]]; then
+	if [[ "${option}" != "${STDLIB_EXEC_WARNONERR}" ]]  &&  [[ "${option}" != "${STDLIB_EXEC_ERRONERR}" ]]  &&  [[ "${option}" != "${STDLIB_EXEC_FAILONERR}" ]]; then
 		std_ERRNO="$( errsymbol EARGS )"
 		resFail "invalid evaluation option"
 
 	elif (( $res )); then
-		if [[ "${option}" == "w" ]]; then
+		if [[ "${option}" == "${STDLIB_EXEC_WARNONERR}" ]]; then
 			resWarning "${message}"
 
-		elif [[ "${option}" == "k" ]]; then
+		elif [[ "${option}" == "${STDLIB_EXEC_ERRONERR}" ]]; then
 			resKo "${message}"
 
-		elif [[ "${option}" == "f" ]]; then
+		elif [[ "${option}" == "${STDLIB_EXEC_FAILONERR}" ]]; then
 			resFail "${message}"
 		fi
 	else
@@ -2146,18 +2163,24 @@ function __STDLIB_API_1_std::capture() { # {{{
 	# Return the stdout or stderr output of a command in a consistent way.
 
 	case "${stream:-}" in
-		1|out|stdout)
+		$STDLIB_STREAM_STDOUT|out|stdout)
 			redirect="2>/dev/null"
 			;;
-		2|err|stderr)
+		$STDLIB_STREAM_STDERR|err|stderr)
 			# N.B.: Ordering - ensure we still get stderr on &1
 			redirect="2>&1 >/dev/null"
 			;;
-		all|both)
+		$STDLIB_STREAM_ALL|all|both)
 			redirect="2>&1"
 			;;
-		none)
+		$STDLIB_STREAM_NONE|none)
 			redirect=">/dev/null 2>&1"
+			;;
+		$STDLIB_STREAM_INTERACTIVE|interactive)
+			redirect=""
+			;;
+		$STDLIB_STREAM_NORMAL|normal)
+			redirect=""
 			;;
 		*)
 			error "Invalid parameters: prototype '${FUNCNAME[0]##*_}" \
@@ -2168,16 +2191,31 @@ function __STDLIB_API_1_std::capture() { # {{{
 			;;
 	esac
 
-	if ! type -t "${cmd:-}" >/dev/null; then
-		error "Invalid parameters: <command> '${cmd:-}' not found"
-		std_ERRNO=$( errsymbol EARGS )
-		return 1
+	## NB: 'type' check requires that args are passed separately from the cmd
+	##     to be executed. This may render specifying subcommands complex,
+	##     especially when one wants to prepend them with env variables like
+	##     DEBUG=1. Therefore, we can either pass cmd and args separately and
+	##     use the old logic to check availability of the command being invoked,
+	##     or pass the subcommand as a single param and skip the check.
+	if [[ ! -z "${args}" ]]; then
+		if ! type -t "${cmd:-}" >/dev/null; then
+			error "Invalid parameters: <command> '${cmd:-}' not found"
+			std_ERRNO=$( errsymbol EARGS )
+			return 1
+		fi
 	fi
 
 	type -pf stdbuf >/dev/null 2>&1 && stdbuf="stdbuf -eL"
 
-	response="$( eval "${stdbuf:+${stdbuf} }${cmd} ${args[*]} ${redirect}" )" ; rc=${?}
-	output "${response:-}"
+	## Subshell execution with output capture prevents interactive mode
+	if [[ "${stream}" == "${STDLIB_STREAM_INTERACTIVE}" || "${stream}" == "interactive" ]]; then
+		eval "${stdbuf:+${stdbuf} }${cmd} ${args[*]} ${redirect}"
+		rc=${?}
+
+	else
+		response="$( eval "${stdbuf:+${stdbuf} }${cmd} ${args[*]} ${redirect}" )" ; rc=${?}
+		output "${response:-}"
+	fi
 
 	std_ERRNO=0
 	return ${rc}
