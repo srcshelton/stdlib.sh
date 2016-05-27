@@ -63,8 +63,6 @@ if [[ -n "${STDLIB_HAVE_STDLIB:-}" ]]; then # {{{
 fi # }}}
 
 
-# {{{
-
 # What API version are we exporting?
 #export std_RELEASE="1.3"   # Initial import
 #export std_RELEASE="1.4"   # Add std::parseargs
@@ -133,8 +131,6 @@ exit 0
 # vi: set syntax=sh colorcolumn=80 foldmethod=marker:
 # --- CUT HERE ---
 EOC
-
-# }}}
 
 
 #
@@ -656,7 +652,7 @@ function __STDLIB_API_1_std::wrap() { # {{{
 	# N.B.: It may be necessary to 'export COLUMNS' before this
 	#       works - this variable isn't exported to scripts by
 	#       default, and is lost on invocation.
-	local -i columns=${COLUMNS:-$( tput cols )}
+	local -i columns=${COLUMNS:-$( tput cols 2>/dev/null )}
 	(( columns )) || columns=80
 
 	if [[ -n "${prefix:-}" ]]; then
