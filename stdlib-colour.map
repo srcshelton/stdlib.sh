@@ -1,0 +1,28 @@
+################################################################################
+#
+# /etc/stdlib/colours
+#
+################################################################################
+
+[colours]
+# status = <foreground colour>[,<background colour>[,<display flags>]]
+#
+# Valid colours are 'black', 'red', 'green', 'yellow', 'blue', 'magenta',
+# 'cyan', and 'white'.  'default' may also be used as a background colour.
+#
+# Valid flags are 'bold', 'underline', and 'inverse'.  How these will actually
+# be rendered depends on your display hardware and/or method of terminal
+# emulation...
+#
+
+okay	= green
+note	= blue
+warn	= yellow
+fatal	= red
+fail	= red,default,bold
+error	= red
+debug	= cyan
+exec	= magenta
+info	= white
+
+# vi: set syntax=cfg, colorcolumn=80:

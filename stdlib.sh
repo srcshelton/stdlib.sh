@@ -24,6 +24,20 @@ do
 		break
 	fi
 done
+
+# Attempt to use colourised output if the environment indicates that this is
+# an appropriate choice...
+[[ -n "${LS_COLORS:-}" ]] && \
+	export STDLIB_WANT_COLOUR="${STDLIB_WANT_COLOUR:-1}"
+
+# We want the non if-then-else functionality here - the third element should be
+# executed if either of the first two fail...
+#
+# N.B. The shellcheck 'source' option is only valid with shellcheck 0.4.0 and
+#      later...
+#
+# shellcheck disable=SC2015
+# shellcheck source=/usr/local/lib/stdlib.sh
 [[ -r "${std_LIBPATH}/${std_LIB}" ]] && source "${std_LIBPATH}/${std_LIB}" || {
 	echo >&2 "FATAL:  Unable to source ${std_LIB} functions"
 	exit 1
@@ -33,6 +47,31 @@ done
 EOC
 
 
+# A note on standard/reserved return/exit codes with special meanings:
+#
+#        Code	Meaning
+# -----------	-------
+#           1	General error
+#           2	Misuse of shell builtin (missing keyword or command, or permission
+#		problem)
+#         126	Command invoked cannot execute (command is not an executable?)
+#         127	"command not found" - specified command does not exist in $PATH
+#         128	Invalid argument to exit
+#  129 to 192	Exited due to signal 'x' where 'x' is ( $? - 128 )
+#		e.g. Ctrl+C == SIGINT == signal 2 (see `kill -l`) == 128 + 2
+#         255	Exit status out of range (e.g. `exit -1` is invalid)
+#
+# If possible, code should either try to employ these conventions or, at least,
+# avoid the above reserved values - use of `exit 127`, for example, could be
+# very confusing or misleading to the user or to other tools.
+#
+# Alternatively, attempt to exclusively use return-codes 0 and 1 to flag
+# success and failure respectively, and then use the errno functions below to
+# provide richer context.  stdlib.sh uses this convention, with 'return 255'
+# appearing for debug purposes to signal the executino of code thought to be
+# unreachable.
+
+
 # Only load stdlib once, and provide support for loading stdlib from bashrc to
 # reduce startup times...
 #
@@ -40,7 +79,7 @@ if [[ "$( type -t std::sentinel 2>&1 )" == "function" ]]; then
 	# We've already initialised, and all funcions are (assumed to be)
 	# present.
 	:
-else
+else # See line 2723
 if [[ -n "${STDLIB_HAVE_STDLIB:-}" ]]; then # {{{
 	if [[ -z "${NAME:-}" ]]; then
 
@@ -56,7 +95,7 @@ if [[ -n "${STDLIB_HAVE_STDLIB:-}" ]]; then # {{{
 	echo >&2
 	echo >&2 "WARN:   ${NAME} variables have been imported, but function definitions are"
 	echo >&2 "WARN:   missing - parent shell may be running in restricted, setuid, or"
-	echo >&2 "WARN:   in privileged mode."
+	echo >&2 "WARN:   privileged mode."
 	echo >&2
 	echo >&2 "NOTICE: Re-executing ${NAME} to re-generate all functions."
 	echo >&2
@@ -64,25 +103,29 @@ fi # }}}
 
 
 # What API version are we exporting?
-#export std_RELEASE="1.3"   # Initial import
-#export std_RELEASE="1.4"   # Add std::parseargs
-#export std_RELEASE="1.4.1" # Add std::define
-#export std_RELEASE="1.4.2" # Add std::getfilesection, std::configure
-#export std_RELEASE="1.4.4" # Re-load stdlib if functions aren't present due to
-                            # bash privileged_mode changes
-#export std_RELEASE="1.4.5" # Update exit-code and and add HTTP mapping
-                            # functions
-#export std_RELEASE="1.4.6" # Fix issues identified by shellcheck.net, and
-                            # improve MacOS compatibility
-#export std_RELEASE="1.4.7" # Fix warnings identified by shellcheck.net, add
-                            # std::wordsplit
+#
+# The version format used for this project is:
+# <API version>.<Major version>[.<Minor version>]
+#
+#export  std_RELEASE="1.3"   # Initial import
+#export  std_RELEASE="1.4"   # Add std::parseargs
+#export  std_RELEASE="1.4.1" # Add std::define
+#export  std_RELEASE="1.4.2" # Add std::getfilesection, std::configure
+#export  std_RELEASE="1.4.4" # Re-load stdlib if functions aren't present due
+                             # to bash privileged_mode changes
+#export  std_RELEASE="1.4.5" # Update exit-code and and add HTTP mapping
+                             # functions
+#export  std_RELEASE="1.4.6" # Fix issues identified by shellcheck.net, and
+                             # improve MacOS compatibility
+#export  std_RELEASE="1.4.7" # Fix warnings identified by shellcheck.net, add
+                             # std::wordsplit
 #export  std_RELEASE="1.5.0" # Add std::inherit, finally make errno functions
-                            # work!  Set std_ERRNO where appropriate
-#export std_RELEASE="1.6.0" # Added coloured output tags
-export std_RELEASE="1.6.1"	# Ehnaced colour setup with optionale external
-							# configuration file, parsing and initialisation
-							# 'Section' helpers enriched with key/value pair
-							# parsing functions
+                             # work!  Set std_ERRNO where appropriate
+export   std_RELEASE="1.5.1" # Added support for coloured output via
+                             # std::colour and add std::findfile, fix
+                             # std::parseargs to handle multi-element input and
+                             # to return arrays (which is luckily non API-
+                             # breaking)
 readonly std_RELEASE
 
 
@@ -136,12 +179,17 @@ EOC
 #
 # Externally set control-variables:
 #
-# STDLIB_WANT_MEMCACHED	- Load native memcached functions;
-# STDLIB_API		- Specify the stdlib API to adhere to;
-# STDLIB_COLOUR_MAP - Specify custom colour map file, default being
-#                     '/usr/local/lib/stdlib.colours';
-# STDLIB_WANT_COLOURISATION - Enables/disables colourised output, using values
-#                             defined in '/usr/local/lib/stdlib.colours'.
+# STDLIB_API		- Specify the stdlib API to adhere to, currently only
+# 			  API version '1' is a supported value;
+#
+# Set (to '1') to activate:
+#
+# STDLIB_WANT_MEMCACHED	- Load native memcached functions, requires presence of
+# 			- external '/usr/local/lib/memcached.sh' script;
+# STDLIB_WANT_COLOUR	- Enable coloured output;
+#
+# STDLIB_COLOUR_MAP	- Specify the path to an optional custom colour map
+# 			  file, defaulting to '/etc/stdlib/colour.map';
 #
 # Exported control-variables:
 #
@@ -149,6 +197,7 @@ EOC
 # STDLIB_HAVE_BASH_4	- Set if interpreter is bash-4 or above;
 # STDLIB_HAVE_ERRNO	- Set if errno functions have been initialised;
 # STDLIB_HAVE_MEMCACHED	- Set if bash memcached interace is available.
+# STDLIB_HAVE_COLOUR	- Enable coloured output;
 #
 # Externally referenced variables:
 #
@@ -188,8 +237,15 @@ shopt -qs failglob
 function output() {
 	local flags="-e"
 
-	[[ " ${1:-} " == " -n " ]] && { flags+="n" ; shift ; }
-	[[ -n "${*:-}" ]] && echo ${flags} "${*}"
+	if ! [[ -n "${*:-}" ]]; then
+		echo
+	else
+		[[ " ${1:-} " == " -n " ]] && { flags+="n" ; shift ; }
+		echo ${flags} "${*}"
+	fi
+
+	std_ERRNO=0
+	return 0
 } # output
 
 # Use 'respond' rather than 'echo' to clearly differentiate function results
@@ -197,6 +253,9 @@ function output() {
 #
 function respond() {
 	[[ -n "${*:-}" ]] && echo "${*}"
+
+	std_ERRNO=0
+	return 0
 } # respond
 
 # Use of aliases requires more investigation to ensure reliability.
@@ -255,26 +314,6 @@ export std_ERRNO=0
 
 declare -a __STDLIB_OWNED_FILES
 
-declare std_INTERNAL_DEBUG="${SLDEBUG:-0}"
-
-## Colored output
-declare std_COLOUR_MAP_FILE="${STDLIB_COLOUR_MAP:-/usr/local/lib/stdlib.colours}"
-declare std_COLOUR_MAP_SECTION="colours"
-
-## Colourisation is off by default
-declare std_COLOUR_START_INFO=""
-declare std_COLOUR_START_NOTICE=""
-declare std_COLOUR_START_DEBUG=""
-declare std_COLOUR_START_EXEC=""
-declare std_COLOUR_START_OK=""
-declare std_COLOUR_START_WARNING=""
-declare std_COLOUR_START_FATAL=""
-declare std_COLOUR_START_FAIL=""
-declare std_COLOUR_START_ERROR=""
-declare std_COLOUR_END=""
-
-declare std_COLOUR_ON="${STDLIB_WANT_COLOURISATION:-0}"
-
 # }}}
 
 
@@ -322,7 +361,7 @@ function __STDLIB_oneshot_get_bash_version() { # {{{
 		# Our interpreter should be some valid shell...
 		int="$( head -n 1 "${parent}" )"
 		local sed="sed -r"
-		${sed} '' >/dev/null 2>&1 <<<'' || sed='sed -E' # ` # <- Syntax highlight fail
+		${sed} '' >/dev/null 2>&1 <<<'' || sed='sed -E' # ` # <- Ubuntu syntax highlight fail
 		int="$( ${sed} 's|^#\! ?||' <<<"${int}" )"
 		unset sed
 		if [[ \
@@ -345,10 +384,10 @@ function __STDLIB_oneshot_get_bash_version() { # {{{
 			version="$( "${shell}" --version 2>&1 | head -n 1 )" || \
 				die "Cannot determine version for" \
 				    "interpreter '${shell}'"
-			#if grep -q "^GNU bash, version " >/dev/null 2>&1 <<<"${version}"; then
-			if echo "${version}" | grep -q "^GNU bash, version " >/dev/null 2>&1; then
-				#if ! grep -q " version [0-3]" >/dev/null 2>&1 <<<"${version}"; then
-				if ! echo "${version}" | grep -q " version [0-3]" >/dev/null 2>&1; then
+			if grep -q "^GNU bash, version " >/dev/null 2>&1 \
+					<<<"${version}"; then
+				if ! grep -q " version [0-3]" >/dev/null 2>&1 \
+						<<<"${version}"; then
 					STDLIB_HAVE_BASH_4=1
 				fi
 				# N.B.: Don't abort if we can't determine our
@@ -382,12 +421,13 @@ function __STDLIB_oneshot_get_bash_version() { # {{{
 
 function __STDLIB_oneshot_syntax_check() { # {{{
 	local script
-	local -Ai seen
 
 	if ! (( STDLIB_HAVE_BASH_4 )) || ! [[ -n "${SHELL:-}" && "${SHELL}" =~ bash$ ]]; then
 		std_ERRNO=$( errsymbol ENOEXE )
 		return 0
 	else
+		local -Ai seen
+
 		while read -r script; do
 			(( ${seen[${script}]:-0} )) && continue
 			seen[${script}]=1
@@ -417,96 +457,111 @@ function __STDLIB_oneshot_syntax_check() { # {{{
 #
 ###############################################################################
 
+## shellcheck gets confused by the constants used below...
+# shellcheck disable=SC2154
 function __STDLIB_oneshot_colours_init() { # {{{
+	local file key value val
+	local -l section
+	local -i fg bg mode
 
-	if(( std_COLOUR_ON )); then
-		local foregroundInfo="white"
-		local backgroundInfo=""
-		local modeInfo=""
-
-		local foregroundNotice="blue"
-		local backgroundNotice=""
-		local modeNotice=""
-
-		local foregroundDebug="cyan"
-		local backgroundDebug=""
-		local modeDebug=""
-
-		local foregroundExec="magenta"
-		local backgroundExec=""
-		local modeExec=""
-
-		local foregroundOk="green"
-		local backgroundOk=""
-		local modeOk=""
-
-		local foregroundWarning="yellow"
-		local backgroundWarning=""
-		local modeWarning=""
-
-		local foregroundFatal="red"
-		local backgroundFatal=""
-		local modeFatal="bold"
-
-		local foregroundFail="red"
-		local backgroundFail=""
-		local modeFail=""
-
-		local foregroundError="red"
-		local backgroundError=""
-		local modeError=""
-
-		if [[ ! -f "${std_COLOUR_MAP_FILE}" ]]; then
-			echo >&2 "WARN:   colourmap file not found, using default colours"
-
-		else
-			local colourMap; colourMap="$( __STDLIB_API_1_std::getfilesection "${std_COLOUR_MAP_FILE}" "${std_COLOUR_MAP_SECTION}" )"
-			colourMap="$( __STDLIB_API_1_std::getKeyValuePairs "${colourMap}" )"
-
-			foregroundInfo="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f1 )"
-			foregroundNotice="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "notice" | cut -d',' -f1 )"
-			foregroundDebug="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "debug" | cut -d',' -f1 )"
-			foregroundExec="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "exec" | cut -d',' -f1 )"
-			foregroundOk="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "ok" | cut -d',' -f1 )"
-			foregroundWarning="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "warning" | cut -d',' -f1 )"
-			foregroundFatal="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "fatal" | cut -d',' -f1 )"
-			foregroundFail="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "fail" | cut -d',' -f1 )"
-			foregroundError="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "error" | cut -d',' -f1 )"
-
-			backgroundInfo="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f2 )"
-			backgroundNotice="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f2 )"
-			backgroundDebug="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f2 )"
-			backgroundExec="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f2 )"
-			backgroundOk="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f2 )"
-			backgroundWarning="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f2 )"
-			backgroundFatal="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f2 )"
-			backgroundFail="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f2 )"
-			backgroundError="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f2 )"
-
-			modeInfo="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f3 )"
-			modeNotice="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f3 )"
-			modeDebug="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f3 )"
-			modeExec="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f3 )"
-			modeOk="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f3 )"
-			modeWarning="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f3 )"
-			modeFatal="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f3 )"
-			modeFail="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f3 )"
-			modeError="$( __STDLIB_API_1_std::getValueByKey "${colourMap}" "info" | cut -d',' -f3 )"
-
-		fi
-
-		std_COLOUR_START_INFO="$( __STDLIB_API_1_std::setTextForeground $( __STDLIB_API_1_std::mapColorCode ${foregroundInfo} ) )$( __STDLIB_API_1_std::setTextBackground $( __STDLIB_API_1_std::mapColorCode ${backgroundInfo} ) )$( __STDLIB_API_1_std::setTextMode $( __STDLIB_API_1_std::mapTextMode ${modeInfo} ) )"
-		std_COLOUR_START_NOTICE="$( __STDLIB_API_1_std::setTextForeground $( __STDLIB_API_1_std::mapColorCode ${foregroundNotice} ) )$( __STDLIB_API_1_std::setTextBackground $( __STDLIB_API_1_std::mapColorCode ${backgroundNotice} ) )$( __STDLIB_API_1_std::setTextMode $( __STDLIB_API_1_std::mapTextMode ${modeNotice} ) )"
-		std_COLOUR_START_DEBUG="$( __STDLIB_API_1_std::setTextForeground $( __STDLIB_API_1_std::mapColorCode ${foregroundDebug} ) )$( __STDLIB_API_1_std::setTextBackground $( __STDLIB_API_1_std::mapColorCode ${backgroundDebug} ) )$( __STDLIB_API_1_std::setTextMode $( __STDLIB_API_1_std::mapTextMode ${modeDebug} ) )"
-		std_COLOUR_START_EXEC="$( __STDLIB_API_1_std::setTextForeground $( __STDLIB_API_1_std::mapColorCode ${foregroundExec} ) )$( __STDLIB_API_1_std::setTextBackground $( __STDLIB_API_1_std::mapColorCode ${backgroundExec} ) )$( __STDLIB_API_1_std::setTextMode $( __STDLIB_API_1_std::mapTextMode ${modeExec} ) )"
-		std_COLOUR_START_OK="$( __STDLIB_API_1_std::setTextForeground $( __STDLIB_API_1_std::mapColorCode ${foregroundOk} ) )$( __STDLIB_API_1_std::setTextBackground $( __STDLIB_API_1_std::mapColorCode ${backgroundOk} ) )$( __STDLIB_API_1_std::setTextMode $( __STDLIB_API_1_std::mapTextMode ${modeOk} ) )"
-		std_COLOUR_START_WARNING="$( __STDLIB_API_1_std::setTextForeground $( __STDLIB_API_1_std::mapColorCode ${foregroundWarning} ) )$( __STDLIB_API_1_std::setTextBackground $( __STDLIB_API_1_std::mapColorCode ${backgroundWarning} ) )$( __STDLIB_API_1_std::setTextMode $( __STDLIB_API_1_std::mapTextMode ${modeWarning} ) )"
-		std_COLOUR_START_FATAL="$( __STDLIB_API_1_std::setTextForeground $( __STDLIB_API_1_std::mapColorCode ${foregroundFatal} ) )$( __STDLIB_API_1_std::setTextBackground $( __STDLIB_API_1_std::mapColorCode ${backgroundFatal} ) )$( __STDLIB_API_1_std::setTextMode $( __STDLIB_API_1_std::mapTextMode ${modeFatal} ) )"
-		std_COLOUR_START_FAIL="$( __STDLIB_API_1_std::setTextForeground $( __STDLIB_API_1_std::mapColorCode ${foregroundFail} ) )$( __STDLIB_API_1_std::setTextBackground $( __STDLIB_API_1_std::mapColorCode ${backgroundFail} ) )$( __STDLIB_API_1_std::setTextMode $( __STDLIB_API_1_std::mapTextMode ${modeFail} ) )"
-		std_COLOUR_START_ERROR="$( __STDLIB_API_1_std::setTextForeground $( __STDLIB_API_1_std::mapColorCode ${foregroundError} ) )$( __STDLIB_API_1_std::setTextBackground $( __STDLIB_API_1_std::mapColorCode ${backgroundError} ) )$( __STDLIB_API_1_std::setTextMode $( __STDLIB_API_1_std::mapTextMode ${modeError} ) )"
-		std_COLOUR_END="$( tput sgr0 )"
+	if ! (( ${STDLIB_WANT_COLOUR:-0} )); then
+		std_ERRNO=0
+		return 0
+	fi
+	# For efficiency purposes, we'll store colour mappings in an
+	# associatve array and so only support colouration with bash-4
+	#
+	if ! (( STDLIB_HAVE_BASH_4 )); then
+		STDLIB_WANT_COLOUR=0
+		std_ERRNO=EENV
+		return 1
+	fi
+	if (( ! $( tput cols 2>/dev/null ) )); then
+		# We're not connected to a terminal
+		STDLIB_WANT_COLOUR=0
+		std_ERRNO=EACCESS
+		return 0
 	fi
 
+	# XXX: Somehow, this breaks standard shell '-e' and '-x' functions!?
+	#tput init 2>/dev/null
+
+	# We can't use -Agix here, because we can't then differentiate between
+	# unset and zero (black)...
+	# XXX: It might be worth storing SGR values rather than colour indices
+	#      here to avoid this ambiguity?
+	declare -Agx __STDLIB_COLOURMAP
+
+	# TODO: Support 16 colours using values 90 (fg-black) to 107 (bg-white)
+	#       and 88/256 colour mode using '38;5;<bg>' and '48;5;<fg>' escape
+	#       sequences...
+	#
+	# black is \e[30m.
+	local -i black=0 red=1 green=2 yellow=3 blue=4 magenta=5 cyan=6 white=7
+	local -i default=9
+	local -i bold=1 underline=4 inverse=7
+
+	# TODO: Read in categories from config file?
+
+	#__STDLIB_COLOURMAP["type"]=$(( ( mode << 16 ) + ( background << 8 ) + foreground ))
+	__STDLIB_COLOURMAP["debug"]=$(( cyan ))
+	__STDLIB_COLOURMAP["error"]=$(( red ))
+	__STDLIB_COLOURMAP["exec"]=$(( magenta ))
+	__STDLIB_COLOURMAP["fail"]=$(( red ))
+	__STDLIB_COLOURMAP["fatal"]=$(( ( bold << 16 ) + red ))
+	__STDLIB_COLOURMAP["info"]=$(( white ))
+	__STDLIB_COLOURMAP["note"]=$(( blue ))
+	__STDLIB_COLOURMAP["okay"]=$(( green ))
+	__STDLIB_COLOURMAP["warn"]=$(( yellow ))
+
+	file="$( std::findfile -app stdlib -name colour.map -dir /etc "${STDLIB_COLOUR_MAP:-}" )"
+	if (( 0 == std_ERRNO )) && [[ -s "${file:-}" ]]; then
+		section="$( std::getfilesection "${file}" "colours" | sed 's/#.*$//' | grep -v '^\s*$' )"
+		(( std_DEBUG & 2 )) && debug "Read $( wc -l <<<"${section}" ) lines of configuration:"
+		(( std_DEBUG & 2 )) && debug "${section}"
+
+		(( std_ERRNO )) && return 1
+
+		for key in debug error exec fail fatal info note okay warn; do
+			value="$( grep -m 1 "^\s*${key}\s*=\s*[^[:space:]]\+\s*$" <<<"${section}" | cut -d'=' -f 2- | sed -r 's/\s+//g' )"
+			(( std_DEBUG & 2 )) && debug "Read '${value:-}' for key '${key}'"
+			if [[ -n "${value:-}" ]]; then
+				case "${value}" in
+					*,*,*)
+						val="$( cut -d',' -f 1 <<<"${value}" )"
+						fg=${!val:-}
+						val="$( cut -d',' -f 2 <<<"${value}" )"
+						bg=${!val:-}
+						val="$( cut -d',' -f 3 <<<"${value}" )"
+						mode=${!val:-}
+						;;
+					*,*)
+						val="$( cut -d',' -f 1 <<<"${value}" )"
+						fg=${!val:-}
+						val="$( cut -d',' -f 2 <<<"${value}" )"
+						bg=${!val:-}
+						mode=0
+						;;
+					*)
+						val="${value}"
+						fg=${!val:-}
+						bg=$(( default ))
+						mode=0
+						;;
+				esac
+				if (( fg )); then
+					__STDLIB_COLOURMAP["${key}"]=$(( ( mode << 16 ) + ( bg << 8 ) + fg ))
+				fi
+			fi
+		done
+	else
+		debug "Colour-map file not found, using default colours only"
+	fi
+
+	# shellcheck disable=2034
+	typeset -gix STDLIB_HAVE_COLOUR=1
+
+	std_ERRNO=0
 	return 0
 } # __STDLIB_oneshot_colours_init # }}}
 
@@ -540,9 +595,21 @@ function __STDLIB_API_1_std::cleanup() { # {{{
 	# Remove any STDLIB-generated temporary files and exit.
 
 	for file in "${__STDLIB_OWNED_FILES[@]:-}"; do
-		(( std_INTERNAL_DEBUG )) && output >&2 "DEBUG: ${FUNCNAME[0]##*_} is removing file '${file}'"
-		[[ -n "${file:-}" && -e "${file}" ]] && \
-			rm -f "${file}" >/dev/null 2>&1
+		if [[ -n "${file:-}" && -e "${file}" ]]; then
+			if rm -f "${file}" >/dev/null 2>&1; then
+				(( std_DEBUG & 2 )) && debug "${FUNCNAME[0]##*_} succeeded removing file '${file}'"
+			else
+				warn "${FUNCNAME[0]##*_} unable to remove file '${file}': ${?}"
+				# We'd expect this to fail again, but tell us
+				# what happened.  This is arguably less correct
+				# than capturing the output in the first place,
+				# but the distinction is likely marginal...
+				rm -f "${file}"
+				(( rc )) || (( rc++ ))
+			fi
+		else
+			(( std_DEBUG & 2 )) && [[ -n "${file:-}" ]] && debug "${FUNCNAME[0]##*_} unable to remove missing file '${file}'"
+		fi
 	done
 	unset file
 
@@ -567,6 +634,7 @@ declare __STDLIB_SIGINT __STDLIB_SIGTERM __STDLIB_SIGQUIT __STDLIB_SIGEXIT
 __STDLIB_SIGEXIT="$( trap -p EXIT | cut -d"'" -f 2 )"
 __STDLIB_SIGQUIT="$( trap -p QUIT | cut -d"'" -f 2 )"
 __STDLIB_SIGTERM="$( trap -p TERM | cut -d"'" -f 2 )"
+
 if [[ "${BASH_SOURCE:-${0:-}}" =~ ${std_LIB:-stdlib.sh}$ ]]; then
 	trap std::cleanup EXIT QUIT TERM
 else
@@ -576,7 +644,7 @@ fi
 export __STDLIB_SIGINT __STDLIB_SIGTERM __STDLIB_SIGQUIT __STDLIB_SIGEXIT
 
 
-# This function should be overridden, or the ${std_USAGE} variable define
+# This function should be overridden, or the ${std_USAGE} variable defined
 #
 function __STDLIB_API_1_usage-message() { # {{{
 	warn "${FUNCNAME[0]##*_} invoked - please use 'std::usage-message' instead"
@@ -596,12 +664,12 @@ function __STDLIB_API_1_std::usage-message() { # {{{
 
 	# The following output will appear in-line after 'Usage: ${NAME} '...
 	output 'Command summary, e.g. "-f|--file <filename> [options]"'
-	output <<END
+	output <<-END
 Further instructions here, e.g.
 
 	-f : Process the specified <filename>
 	-h : Show this help information
-END
+	END
 
 	std_ERRNO=0
 	return 0
@@ -720,6 +788,217 @@ function __STDLIB_API_1_std::log() { # {{{
 	return $(( ! std_DEBUG ))
 } # __STDLIB_API_1_std::log # }}}
 
+# shellcheck disable=SC2034
+function __STDLIB_API_1_std::colour() { # {{{
+	local string=""
+	local -a text=()
+	local -la colour=() type=()
+	local -i value2 value1 fg bg mode
+
+	# TODO: Support 16 colours using values 90 (fg-black) to 107 (bg-white)
+	#       and 88/256 colour mode using '38;5;<bg>' and '48;5;<fg>' escape
+	#       sequences...
+	local -i black=0 red=1 green=2 yellow=3 blue=4 magenta=5 cyan=6 white=7
+	local -i default=9
+	local -i normal=0 bold=1 underline=4 inverse=7
+
+	# Usage: std::colour [-colour <value>] [-type <prefix>] <text [...]>
+	local std_PARSEARGS_parsed=0
+	eval "$( std::parseargs --single --permissive --var text -- "${@:-}" )"
+	if (( std_PARSEARGS_parsed )); then
+		set -- "${text[@]:-}"
+
+		if [[ -z "${colour[*]:-}" ]] && [[ -n "${1:-}" ]] && ! [[ "${1}" =~ ^[0-9]+$ ]]; then
+			colour=( "${1}" )
+			if [[ -z "${!colour:-}" ]]; then
+				unset colour
+			else
+				value2="${!colour}"
+				shift
+			fi
+		fi
+	else
+		(( std_DEBUG & 2 )) && {
+			warn "std::parseargs found no tagged arguments in ${FUNCNAME[0]##*_}:"
+			warn "std::parseargs --single --permissive --var text -- '${*:-}'"
+		}
+
+		eval "set -- '$( std::parseargs --strip -- "${@:-}" )'"
+
+		if [[ -n "${1:-}" ]] && ! [[ "${1}" =~ ^[0-9]+$ ]]; then
+			colour=( "${1}" )
+			if [[ -z "${!colour:-}" ]]; then
+				unset colour
+			else
+				value2="${!colour}"
+				shift
+			fi
+		fi
+	fi
+
+	[[ -n "${type[*]:-}" || -n "${*:-}" ]] || {
+		respond ""
+
+		# Don't stomp on std_ERRNO
+		return 0
+	}
+
+	if [[ -z "${STDLIB_WANT_COLOUR:-}" ]] || ! (( STDLIB_WANT_COLOUR )); then
+		respond "${*:-}"
+
+		# Don't stomp on std_ERRNO
+		return 0
+	fi
+
+	if ! (( ${#__STDLIB_COLOURMAP[@]:-} )); then
+		std_ERRNO=$( errsymbol EENV )
+		return 1
+	fi
+
+	if [[ -n "${colour[*]:-}" ]]; then
+		if [[ "${colour[*]}" =~ ^[0-9]+$ ]]; then
+			(( value2 = ${colour[*]} ))
+		elif [[ -n "${!colour:-}" ]]; then
+			value2="${!colour}"
+		else
+			warn "Unknown colour '${colour[*]}'"
+		fi
+	fi
+
+	# If we've not been given an explicit type, then try to guess an
+	# appropriate value from the first token of the provided message, if
+	# any...
+	if ! [[ -n "${type[*]:-}" ]]; then
+		type=( "${1:-}" )
+		type=( "${type// *}" )
+	fi
+	case "${type[*]:-}" in
+		exec*)
+			type=( "exec" )
+			;;
+		info*)
+			type=( "info" )
+			;;
+		notice*)
+			type=( "note" )
+			;;
+		ok*)
+			type=( "okay" )
+			;;
+		warn*)
+			type=( "warn" )
+			;;
+	esac
+	type=( "${__STDLIB_COLOURMAP["${type//[^a-z]}"]:-}" )
+	if [[ -n "${type[*]:-}" ]]; then
+		# type is a prefix from __STDLIB_COLOURMAP, and t is a colour
+		# index...
+		(( value1 = ${type[*]} ))
+	fi
+
+	# We now do actually want to word-split our arguments...
+	# shellcheck disable=SC2068
+	set -- ${@:-}
+
+	if [[ -z "${value1:-}" && -z "${value2:-}" ]]; then
+		respond "${*:-}"
+	else
+		if [[ -n "${value1:-}" ]]; then
+			fg=$(( 30 + white )) bg=$(( 40 + default)) mode=$(( normal ))
+
+			string+="\e["
+
+			if (( value1 >= ( 1 << 16 ) )); then
+				(( mode = ( value1 >> 16 ) ))
+				(( value1 -= ( mode << 16 ) ))
+			fi
+			if (( value1 >= ( 1 << 8 ) )); then
+				(( bg = ( value1 >> 8 ) ))
+				(( value1 -= ( bg << 8 ) ))
+				(( bg += 40 ))
+			fi
+			(( fg = 30 + value1 ))
+
+			if (( fg < 30 )) || (( fg > 37 )); then
+				warn "Prefix foreground colour index '${fg:-}' out of range {30..37}"
+				(( fg = white ))
+			fi
+			if (( 48 == bg )) || (( bg < 40 )) || (( bg > 49 )); then
+				warn "Prefix background colour index '${bg:-}' out of range {40..47,49}"
+				(( bg = default ))
+			fi
+			if ! (( 0 == mode || 1 == mode || 4 == mode || 7 == mode )); then
+				warn "Prefix mode index '${mode:-}' out of range {0,1,4,7}"
+				(( mode = normal ))
+			fi
+
+			if (( bg )); then
+				string+="${bg};"
+			fi
+			if (( fg )); then
+				string+="${fg};"
+			fi
+			if (( mode )); then
+				string+="${mode};"
+			fi
+			string="${string%;}m${1:-}"
+			shift
+
+			if [[ -n "${value2:-}" ]] && ! (( value1 == value2 )); then
+				string+="\e[0m${*:+ }"
+			else
+				string+="${*:+ }"
+			fi
+		fi
+
+		if [[ -n "${value2:-}" && "${value2}" != "${value1:-}" ]]; then
+			fg=$(( 30 + white )) bg=$(( 40 + default )) mode=$(( normal ))
+
+			string+="\e["
+
+			if (( value2 >= ( 1 << 16 ) )); then
+				(( mode = ( value2 >> 16 ) ))
+				(( value2 -= ( mode << 16 ) ))
+			fi
+			if (( value2 >= ( 1 << 8 ) )); then
+				(( bg = ( value2 >> 8 ) ))
+				(( value2 -= ( bg << 8 ) ))
+				(( bg += 40 ))
+			fi
+			(( fg = 30 + value2 ))
+
+			if (( fg < 30 )) || (( fg > 37 )); then
+				warn "Foreground colour index '${fg:-}' out of range {30..37}"
+				(( fg = white ))
+			fi
+			if (( 48 == bg )) || (( bg < 40 )) || (( bg > 49 )); then
+				warn "Background colour index '${bg:-}' out of range {40..47,49}"
+				(( bg = default ))
+			fi
+			if ! (( 0 == mode || 1 == mode || 4 == mode || 7 == mode )); then
+				warn "Mode index '${mode:-}' out of range {0,1,4,7}"
+				(( mode = normal ))
+			fi
+
+			if (( bg )); then
+				string+="${bg};"
+			fi
+			if (( fg )); then
+				string+="${fg};"
+			fi
+			if (( mode )); then
+				string+="${mode};"
+			fi
+			string="${string%;}m"
+		fi
+
+		output "${string}${*:-}\e[0m"
+	fi
+
+	# Don't stomp on std_ERRNO
+	return 0
+} # __STDLIB_API_1_std::colour # }}}
+
 #
 # N.B.: To prevent unnecessary indirection, call API-versioned functions below
 #
@@ -727,7 +1006,8 @@ function __STDLIB_API_1_std::log() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_die() { # {{{
-	[[ -n "${*:-}" ]] && std_DEBUG=1 __STDLIB_API_1_std::log >&2 "${std_COLOUR_START_FATAL}FATAL${std_COLOUR_END}: " "${*}"
+	[[ -n "${*:-}" ]] && \
+	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "$( __STDLIB_API_1_std::colour "FATAL: " )" "${*}"
 	__STDLIB_API_1_std::cleanup 1
 
 	# Don't stomp on std_ERRNO
@@ -737,7 +1017,7 @@ function __STDLIB_API_1_die() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_error() { # {{{
-	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "${std_COLOUR_START_ERROR}ERROR${std_COLOUR_END}: " "${*:-Unspecified error}"
+	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "$( __STDLIB_API_1_std::colour "ERROR: " )" "${*:-Unspecified error}"
 
 	# Don't stomp on std_ERRNO
 	return 1
@@ -746,7 +1026,7 @@ function __STDLIB_API_1_error() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_warn() { # {{{
-	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "${std_COLOUR_START_WARNING}WARN${std_COLOUR_END}:  " "${*:-Unspecified warning}"
+	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "$( __STDLIB_API_1_std::colour "WARN:  " )" "${*:-Unspecified warning}"
 
 	# Don't stomp on std_ERRNO
 	return 1
@@ -756,7 +1036,7 @@ function __STDLIB_API_1_warn() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_note() { # {{{
-	std_DEBUG=1 __STDLIB_API_1_std::log "${std_COLOUR_START_NOTICE}NOTICE${std_COLOUR_END}:" "${*:-Unspecified notice}"
+	std_DEBUG=1 __STDLIB_API_1_std::log     "$( __STDLIB_API_1_std::colour "NOTICE:" )" "${*:-Unspecified notice}"
 
 	# Don't stomp on std_ERRNO
 	return 0
@@ -769,7 +1049,7 @@ function __STDLIB_API_1_notice() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_info() { # {{{
-	std_DEBUG=1 __STDLIB_API_1_std::log "${std_COLOUR_START_INFO}INFO${std_COLOUR_END}:  " "${*:-Unspecified message}"
+	std_DEBUG=1 __STDLIB_API_1_std::log     "$( __STDLIB_API_1_std::colour "INFO:  " )" "${*:-Unspecified message}"
 
 	# Don't stomp on std_ERRNO
 	return 0
@@ -778,165 +1058,13 @@ function __STDLIB_API_1_info() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_debug() { # {{{
-	(( std_DEBUG )) && __STDLIB_API_1_std::log >&2 "${std_COLOUR_START_DEBUG}DEBUG${std_COLOUR_END}: " "${*:-Unspecified message}"
+	(( std_DEBUG )) && \
+	            __STDLIB_API_1_std::log >&2 "$( __STDLIB_API_1_std::colour "DEBUG: " )" "${*:-Unspecified debug message}"
 
 	# Don't stomp on std_ERRNO
 	return $(( ! std_DEBUG ))
 } # __STDLIB_API_1_debug # }}}
 
-###############################################################################
-#
-# stdlib.sh - Standard functions - Map color words to color codes
-#
-###############################################################################
-
-function __STDLIB_API_1_std::mapColorCode() { # {{{
-	local param_colorWord="${1:-}"
-	local -i colorCode=0
-
-	#[[ ! -n "${param_colorWord:-}" ]] && { echo >&2 "Undefined colour"; return 1; }
-	[[ ! -n "${param_colorWord:-}" ]] && return 1
-
-	case $param_colorWord in
-		black)
-			colorCode=0
-			;;
-
-		red)
-			colorCode=1
-			;;
-
-		green)
-			colorCode=2
-			;;
-
-		yellow)
-			colorCode=3
-			;;
-
-		blue)
-			colorCode=4
-			;;
-
-		magenta)
-			colorCode=5
-			;;
-
-		cyan)
-			colorCode=6
-			;;
-
-		white)
-			colorCode=7
-			;;
-
-		*)
-			echo >&2 "Unsupported colour"
-			return 1
-			;;
-	esac
-
-	respond "${colorCode}"
-	return 0
-
-} # __STDLIB_API_1_std::mapColorCode() # }}}
-
-
-###############################################################################
-#
-# stdlib.sh - Standard functions - Map color words to color codes
-#
-###############################################################################
-
-function __STDLIB_API_1_std::mapTextMode() { # {{{
-	local param_modeWord="${1:-}"
-	local modeCode=""
-
-	#[[ ! -n "${param_modeWord:-}" ]] && { echo >&2 "Undefined mode"; return 1; }
-	[[ ! -n "${param_modeWord:-}" ]] && return 1
-
-	case $param_modeWord in
-		bold)
-			modeCode="bold"
-			;;
-
-		dim)
-			modeCode="dim"
-			;;
-
-		underline)
-			modeCode="smul"
-			;;
-
-		reverse)
-			modeCode="rev"
-			;;
-
-		standout)
-			modeCode="smso"
-			;;
-
-		*)
-			echo >&2 "Unsupported mode"
-			return 1
-			;;
-	esac
-
-	respond "${modeCode}"
-	return 0
-
-} # __STDLIB_API_1_std::mapTextMode() # }}}
-
-
-###############################################################################
-#
-# stdlib.sh - Standard functions - Set foreground color
-#
-###############################################################################
-
-function __STDLIB_API_1_std::setTextForeground() { # {{{
-	local param_colorCode="${1:-}"
-	local retColor=""
-
-	[[ ! -z "${param_colorCode:-}" ]] && retColor="$( tput setaf ${param_colorCode} )"
-
-	respond "${retColor}"
-	return 0
-} # __STDLIB_API_1_std::setTextForeground # }}}
-
-
-###############################################################################
-#
-# stdlib.sh - Standard functions - Set background color
-#
-###############################################################################
-
-function __STDLIB_API_1_std::setTextBackground() { # {{{
-	local param_colorCode="${1:-}"
-	local retColor=""
-
-	[[ ! -z "${param_colorCode:-}" ]] && retColor="$( tput setab ${param_colorCode} )"
-
-	respond "${retColor}"
-	return 0
-} # __STDLIB_API_1_std::setTextBackground # }}}
-
-
-###############################################################################
-#
-# stdlib.sh - Standard functions - Set text mode
-#
-###############################################################################
-
-function __STDLIB_API_1_std::setTextMode() { # {{{
-	local param_modeCode="${1:-}"
-	local retCode=""
-
-	[[ ! -z "${param_modeCode:-}" ]] && retCode="$( tput ${param_modeCode} )"
-
-	respond "${retCode}"
-	return 0
-} # __STDLIB_API_1_std::setTextMode # }}}
 
 ###############################################################################
 #
@@ -1092,12 +1220,15 @@ function __STDLIB_API_1_std::garbagecollect() { # {{{
 		fi
 	done
 
-	if (( std_INTERNAL_DEBUG )); then
-		output >&2 "DEBUG: ${FUNCNAME[0]##*_} updated '__STDLIB_OWNED_FILES' to:"
-		for file in "${__STDLIB_OWNED_FILES[@]}"; do
-			output >&2 "${std_TAB}${file}"
-		done
-		output >&2
+	if (( std_DEBUG & 2 )); then
+		if ! [[ -n "${__STDLIB_OWNED_FILES[*]:-}" ]]; then
+			warn "${FUNCNAME[0]##*_} is not tracking any files after being invoked with filenames '${*:-}'"
+		else
+			debug "${FUNCNAME[0]##*_} now tracking ${#__STDLIB_OWNED_FILES[@]} files:"
+			for file in "${__STDLIB_OWNED_FILES[@]}"; do
+				debug "${std_TAB}${file}"
+			done
+		fi
 	fi
 
 	# std_ERRNO set above
@@ -1105,7 +1236,7 @@ function __STDLIB_API_1_std::garbagecollect() { # {{{
 } # __STDLIB_API_1_std::garbagecollect # }}}
 
 function __STDLIB_API_1_std::mktemp() { # {{{
-	local tmpdir suffix files
+	local -a tmpdir=() suffix=() files=()
 	local -i namedargs=1
 
 	# Usage: std::mktemp [-tmpdir <directory>] [-suffix <extension>] _
@@ -1113,8 +1244,13 @@ function __STDLIB_API_1_std::mktemp() { # {{{
 	local std_PARSEARGS_parsed=0
 	eval "$( std::parseargs --single --permissive --var files -- "${@:-}" )"
 	(( std_PARSEARGS_parsed )) || {
-		eval set -- "$( std::parseargs --strip -- "${@:-}" )"
-		files="${*:-}"
+		(( std_DEBUG & 2 )) && {
+			warn "std::parseargs found no tagged arguments in ${FUNCNAME[0]##*_}:"
+			warn "std::parseargs --single --permissive --var files -- '${*:-}'"
+		}
+
+		eval "set -- '$( std::parseargs --strip -- "${@:-}" )'"
+		files=( "${@:-}" )
 		namedargs=0
 	}
 
@@ -1156,7 +1292,7 @@ function __STDLIB_API_1_std::mktemp() { # {{{
 			standard=$__std_mktemp_standard_gnu
 			;;
 		1)
-			[[ -n "${suffix:-}" ]] && debug "${FUNCNAME[0]##*_} Removing" \
+			[[ -n "${suffix[*]:-}" ]] && debug "${FUNCNAME[0]##*_} Removing" \
 				"unsupported 'suffix' option with non-GNU system mktemp"
 			unset suffix
 			message="legacy/BSD mktemp failed"
@@ -1176,19 +1312,19 @@ function __STDLIB_API_1_std::mktemp() { # {{{
 
 	if (( 0 == namedargs )); then
 		if [[ -n "${1:-}" && -d "${1}" ]]; then
-			tmpdir="${1}"
+			tmpdir=( "${1}" )
 			shift
 		fi
 	fi
-	if [[ -d "${tmpdir:-}" ]]; then
+	if [[ -d "${tmpdir[0]:-}" ]]; then
 		case ${standard} in
 			$__std_mktemp_standard_gnu)
 				# Note trailing space and quote...
-				opts="--tmpdir=\"${tmpdir}\" \""
+				opts="--tmpdir=\"${tmpdir[0]}\" \""
 				;;
 			$__std_mktemp_standard_legacy)
 				# Note lack of trailing space before quote...
-				opts="\"${tmpdir}\"/\""
+				opts="\"${tmpdir[0]}\"/\""
 				;;
 			$__std_mktemp_standard_bsd)
 				# There are two options here:
@@ -1198,15 +1334,15 @@ function __STDLIB_API_1_std::mktemp() { # {{{
 				# 'mktemp "${TMPDIR}"/file.XXXXXXXX' expands
 				# specified templates.
 				# Note lack of trailing space before quote...
-				opts="\"${tmpdir}\"/\""
+				opts="\"${tmpdir[0]}\"/\""
 				;;
 		esac
 	else
-		tmpdir="${TMPDIR:-/tmp}"
+		tmpdir=( "${TMPDIR:-/tmp}" )
 
 		case ${standard} in
 			$__std_mktemp_standard_bsd)
-				opts="\"${tmpdir}\"/\""
+				opts="\"${tmpdir[0]}\"/\""
 				;;
 			*)
 				# Note trailing space and quote...
@@ -1218,15 +1354,15 @@ function __STDLIB_API_1_std::mktemp() { # {{{
 	local -a __std_NEWFILES
 	local file name
 
-	[[ -n "${files:-}" ]] || files="${NAME}"
-	for file in ${files}; do
-		name="${file}.XXXXXXXX${suffix:+.${suffix}}"
+	[[ -n "${files[*]:-}" ]] || files=( "${NAME}" )
+	for file in "${files[@]}"; do
+		name="${file}.XXXXXXXX${suffix[*]:+.${suffix[*]}}"
 
 		# Otherwise undocumented, **potentially dangerous**, configuration setting...
 		if [[ -n "${STDLIB_REUSE_TEMPFILES:-}" ]]; then
 			local filename
-			#filename="$( ls -1 "${tmpdir}"/"${NAME}.${file}."* 2>/dev/null | tail -n 1 )"
-			filename="$( find "${tmpdir}" -mindepth 1 -maxdepth 1 -name "${NAME}.${file}.*" -print 2>/dev/null | tail -n 1 )"
+			#filename="$( ls -1 "${tmpdir[0]}"/"${NAME}.${file}."* 2>/dev/null | tail -n 1 )"
+			filename="$( find "${tmpdir[0]}" -mindepth 1 -maxdepth 1 -name "${NAME}.${file}.*" -print 2>/dev/null | tail -n 1 )"
 
 			if [[ -n "${filename:-}" && -w "${filename}" ]]; then
 				# We're intentionally matching the literal quote characters here...
@@ -1253,20 +1389,23 @@ function __STDLIB_API_1_std::mktemp() { # {{{
 		)
 	done
 
-	if (( ${#__std_NEWFILES[@]} )); then
+	if [[ -n "${__std_NEWFILES[*]:-}" ]]; then
 		__STDLIB_OWNED_FILES+=( "${__std_NEWFILES[@]}" )
 
 		for file in "${__std_NEWFILES[@]}"; do
 			respond "${file}"
 		done
-	fi
 
-	if (( std_INTERNAL_DEBUG )); then
-		output >&2 "DEBUG: ${FUNCNAME[0]##*_} updated '__STDLIB_OWNED_FILES' to:"
-		for file in "${__STDLIB_OWNED_FILES[@]}"; do
-			output >&2 "${std_TAB}${file}"
-		done
-		output >&2
+		if (( std_DEBUG & 2 )); then
+			if ! [[ -n "${__STDLIB_OWNED_FILES[*]:-}" ]]; then
+				warn "${FUNCNAME[0]##*_} is not tracking any files after attempting to register filenames '${__std_NEWFILES[*]}'"
+			else
+				debug "${FUNCNAME[0]##*_} now tracking ${#__STDLIB_OWNED_FILES[@]} files:"
+				for file in "${__STDLIB_OWNED_FILES[@]}"; do
+					debug "${std_TAB}${file}"
+				done
+			fi
+		fi
 	fi
 
 	std_ERRNO=0
@@ -1274,30 +1413,36 @@ function __STDLIB_API_1_std::mktemp() { # {{{
 } # __STDLIB_API_1_std::mktemp # }}}
 
 function __STDLIB_API_1_std::emktemp() { # {{{
-	local var tmpdir suffix names
+	local -a var=() tmpdir=() suffix=() names=()
 
 	# Usage: std::emktemp -var <variable> [-tmpdir <directory>] _
 	#        [-suffix <extension>] [filename component ...]
 	local std_PARSEARGS_parsed=0
 	eval "$( std::parseargs --single --permissive --var names -- "${@:-}" )"
 	if (( std_PARSEARGS_parsed )); then
-		eval set -- "${names:-}"
-		if [[ -z "${var:-}" ]]; then
-			var="${1}" ; shift
+		(( std_DEBUG & 2 )) && {
+			warn "std::parseargs found no tagged arguments in ${FUNCNAME[0]##*_}:"
+			warn "std::parseargs --single --permissive --var names -- '${*:-}'"
+		}
+
+		set -- "${names[@]:-}"
+
+		if [[ -z "${var[0]:-}" ]]; then
+			var=( "${1}" ) ; shift
 		fi
 	else
-		eval set -- "$( std::parseargs --strip -- "${@:-}" )"
-		var="${1}" ; shift
+		eval "set -- '$( std::parseargs --strip -- "${@:-}" )'"
+		var=( "${1}" ) ; shift
 	fi
 
-	[[ -n "${var:-}" ]] || {
+	[[ -n "${var[0]:-}" ]] || {
 		error "${FUNCNAME[0]##*_} requires at least one argument"
 
 		std_ERRNO=$( errsymbol EARGS )
 		return 1
 	}
-	if ! [[ "${var}" =~ ^[a-zA-Z_]+[a-zA-Z0-9_]*$ ]]; then
-		error "${FUNCNAME[0]##*_} parameter-name '${var}' is not a valid variable-name"
+	if ! [[ "${var[0]}" =~ ^[a-zA-Z_]+[a-zA-Z0-9_]*$ ]]; then
+		error "${FUNCNAME[0]##*_} parameter-name '${var[0]}' is not a valid variable-name"
 
 		std_ERRNO=$( errsymbol EARGS )
 		return 1
@@ -1320,10 +1465,10 @@ function __STDLIB_API_1_std::emktemp() { # {{{
 	# ... which will place the results into tempfile on success.
 
 	local file rc
-	local -a files result
+	local -a files=() results=()
 	std_ERRNO=0
 
-	files=( $( eval "__STDLIB_API_1_std::mktemp ${tmpdir:+-tmpdir "${tmpdir}"} ${suffix:+-suffix "${suffix}"} ${*:-${$}}" ) )
+	files=( $( eval "__STDLIB_API_1_std::mktemp ${tmpdir[0]:+-tmpdir "${tmpdir[*]}"} ${suffix[0]:+-suffix "${suffix[*]}"} ${*:-${$}}" ) )
 	rc=${?}
 
 	if (( rc )); then
@@ -1332,12 +1477,12 @@ function __STDLIB_API_1_std::emktemp() { # {{{
 	else
 		for file in "${files[@]:-}"; do
 			__STDLIB_API_1_std::garbagecollect "${file}" \
-				&& result+=( "${file}" ) \
+				&& results+=( "${file}" ) \
 				|| rc=1
 		done
 	fi
-	if [[ -n "${result[*]:-}" ]]; then
-		eval "export ${var}='${result[*]}'"
+	if [[ -n "${results[*]:-}" ]]; then
+		eval "export ${var[0]}='${results[*]}'"
 	else
 		rc=1
 	fi
@@ -1769,7 +1914,7 @@ function __STDLIB_API_1_std::requires() { # {{{
 				done
 			fi
 			rc=0
-			eval set -- "${files:-}"
+			eval "set -- '${files:-}'"
 		fi
 	done
 
@@ -1926,7 +2071,7 @@ function __STDLIB_API_1_std::wordsplit() { # {{{
 		return 1
 	}
 
-	read -r -d '' -a words <<<"${string}" # ` # <- Syntax highlight fail
+	read -r -d '' -a words <<<"${string}" # ` # <- Ubuntu syntax highlight fail
 	for word in "${words[@]}"; do
 		respond "${word}"
 	done
@@ -1934,6 +2079,119 @@ function __STDLIB_API_1_std::wordsplit() { # {{{
 	std_ERRNO=0
 	return 0
 } # __STDLIB_API_1_std::wordsplit # }}}
+
+
+###############################################################################
+#
+# stdlib.sh - Helper functions - Find a specified file from a selection of
+#                                standardised locations
+#
+###############################################################################
+
+function __STDLIB_API_1_std::findfile() { # {{{
+	local file
+	local -a app=() name=() dir=() default=() paths=() files=()
+
+	# Usage: std::findfile [-app <name>] [-name <filename>] _
+	#        [-dir <directory>] [-default <expected path>] [path ...]
+	local std_PARSEARGS_parsed=0
+	eval "$( std::parseargs --single --permissive --var paths -- "${@:-}" )"
+	if (( std_PARSEARGS_parsed )); then
+		set -- "${paths[@]:-}"
+	else
+		(( std_DEBUG & 2 )) && {
+			warn "std::parseargs found no tagged arguments in ${FUNCNAME[0]##*_}:"
+			warn "std::parseargs --single --permissive --var paths -- '${*:-}'"
+		}
+
+		eval "set -- '$( std::parseargs --strip -- "${@:-}" )'"
+
+		app=( "${1:-}" ) ; shift
+		name=( "${1:-}" ) ; shift
+		dir=( "${1:-}" ) ; shift
+		default=( "${1:-}" ) ; shift
+	fi
+
+	[[ -n "${name[*]:-}" || -n "${default[*]:-}" || -n "${1:-}" ]] || {
+		error "${FUNCNAME[0]##*_} requires at least one filename argument"
+
+		std_ERRNO=$( errsymbol EARGS )
+		return 1
+	}
+
+	# For example, to search /etc/stdlib.colours, /etc/stdlib/colours,
+	# /usr/local/etc/stdlib.colours, and a given path then invoke:
+	# std::findfile -dir /etc -app stdlib -name colours
+	# ... or:
+	# std::findfile stdlib colours /etc
+
+	for file in "${default[@]:-}" "${@:-}"; do
+		[[ -n "${file:-}" ]] && files+=( "${file}" )
+	done
+
+	if [[ -n "${name[*]:-}" ]]; then
+		if [[ -n "${dir[*]:-}" ]]; then
+			if [[ -n "${app[*]:-}" ]]; then
+				for file in \
+					"/${dir[*]}/${app[*]}/${name[*]}" \
+					"/${dir[*]}/${app[*]}.${name[*]}" \
+					"/usr/local/${dir[*]}/${app[*]}/${name[*]}" \
+					"/usr/local/${dir[*]}/${app[*]}.${name[*]}"
+				do
+					files+=( "${file//\/\///}" )
+				done
+			else
+				for file in \
+					"/${dir[*]}/${name[*]}" \
+					"/usr/local/${dir[*]}/${name[*]}"
+				do
+					files+=( "${file//\/\///}" )
+				done
+			fi
+		fi
+		if [[ -n "${app[*]:-}" ]]; then
+			for file in \
+				"/${HOME:-/root}/${app[*]}/${name[*]}" \
+				"/${HOME:-/root}/${app[*]}.${name[*]}" \
+				"/${HOME:-/root}/.${app[*]}/${name[*]}" \
+				"/${HOME:-/root}/.${app[*]}.${name[*]}"
+			do
+				files+=( "${file//\/\///}" )
+			done
+			if [[ -n "${std_LIBPATH:-}" ]]; then
+				for file in \
+					"/${std_LIBPATH}/${app[*]}/${name[*]}" \
+					"/${std_LIBPATH}/${app[*]}.${name[*]}" \
+					"/${std_LIBPATH}/.${app[*]}/${name[*]}" \
+					"/${std_LIBPATH}/.${app[*]}.${name[*]}"
+				do
+					files+=( "${file//\/\///}" )
+				done
+			fi
+		else
+			for file in \
+				"/${HOME:-/root}/${name[*]}" \
+				"/${HOME:-/root}/.${name[*]}"
+			do
+				files+=( "${file//\/\///}" )
+			done
+		fi
+	fi
+	for file in "${files[@]}"; do
+		(( std_DEBUG & 2 )) && debug "${FUNCNAME[0]##*_} checking for file '${file}' ..."
+
+		if [[ -e "${file}" ]]; then
+			(( std_DEBUG & 2 )) && debug "${FUNCNAME[0]##*_} selecting file '${file}'"
+			respond "${file}"
+
+			std_ERRNO=0
+			return 0
+		fi
+	done
+
+	std_ERRNO=$( errsymbol ENOTFOUND )
+	return 1
+} # __STDLIB_API_1_std::findfile # }}}
 
 
 ###############################################################################
@@ -1974,45 +2232,6 @@ function __STDLIB_API_1_std::getfilesection() { # {{{
 	std_ERRNO=0
 	return ${?}
 } # __STDLIB_API_1_std::getfilesection # }}}
-
-
-###############################################################################
-#
-# stdlib.sh - Helper functions - Get key/value pairs off of Windows-style .ini
-#                                sections.
-#
-###############################################################################
-
-function __STDLIB_API_1_std::getKeyValuePairs() { # {{{
-	local param_section="${1:-}"
-	local retList=""
-
-	retList="$( echo "${param_section:-1}" | sed -r 's/#.*$// ; /^[^[:space:]]+\.[^[:space:]]+\s*=/s/\./_/' | grep -Ev '^\s*$' | sed -r 's/\s*=\s*/=/' )"
-
-	respond "${retList}"
-
-	return 0
-} # __STDLIB_API_1_std::getKeyValuePairs # }}}
-
-
-###############################################################################
-#
-# stdlib.sh - Helper functions - Get key/value pairs off of Windows-style .ini
-#                                sections.
-#
-###############################################################################
-
-function __STDLIB_API_1_std::getValueByKey() { # {{{
-	local param_pairList="${1:-}"
-	local param_key="${2:-}"
-	local retValue=""
-
-	retValue="$( grep -E "^${param_key:-}=" <<<"${param_pairList:-1}" | cut -d'=' -f2- )"
-
-	respond "${retValue}"
-
-	return 0
-} # __STDLIB_API_1_std::getValueByKey # }}}
 
 
 ###############################################################################
@@ -2105,35 +2324,35 @@ function __STDLIB_API_1_std::http::expand() { # {{{
 ###############################################################################
 
 function __STDLIB_API_1_std::parseargs() { # {{{
-	local current arg
-	local -i onevalue=0 unrecok=0 rc=1
+	local std_PARSEARGS_current="" std_PARSEARGS_arg=""
+	local -i std_PARSEARGS_onevalue=0 std_PARSEARGS_unrecok=0 std_PARSEARGS_rc=1
 
-	local unassigned="std_PARSEARGS_unassigned"
+	local std_PARSEARGS_unassigned_var="std_PARSEARGS_unassigned"
 
 	local std_PARSEARGS_parsed=1
 
 	std_ERRNO=0
 
 	if [[ "${1:-}" =~ ^(--)?strip$ ]]; then
-		for arg in "${@:-}"; do
-			(( rc )) || [[ "${arg:-}" =~ ^- ]] || respond "${arg:-}"
-			[[ "${arg:-}" == "--" ]] && rc=0
+		for std_PARSEARGS_arg in "${@:-}"; do
+			(( std_PARSEARGS_rc )) || [[ "${std_PARSEARGS_arg:-}" =~ ^- ]] || respond "${std_PARSEARGS_arg:-}"
+			[[ "${std_PARSEARGS_arg:-}" == "--" ]] && std_PARSEARGS_rc=0
 		done
 		return 0
 	fi
 
-	(( STDLIB_HAVE_BASH_4 )) || {
-		(( std_DEBUG )) && error "${FUNCNAME[0]##*_} requires bash-4 associative arrays"
-		std_PARSEARGS_parsed=0
-		respond "std_PARSEARGS_parsed=${std_PARSEARGS_parsed:-0}"
-
-		std_ERRNO=$( errsymbol ENOEXE )
-		return 1
-	}
+	#(( STDLIB_HAVE_BASH_4 )) || {
+	#	(( std_DEBUG )) && error "${FUNCNAME[0]##*_} requires bash-4 associative arrays"
+	#	std_PARSEARGS_parsed=0
+	#	respond "std_PARSEARGS_parsed=${std_PARSEARGS_parsed:-0}"
+	#
+	#	std_ERRNO=$( errsymbol ENOEXE )
+	#	return 1
+	#}
 
 	# It would sometimes be incredibly useful to be able to pass unordered
 	# or optional parameters to a shell function, without the overhead of
-	# having to run getopt and parse the output for every invokation.
+	# having to run getopt and parse the output for every invocation.
 	#
 	# The aim here is to provide a function which can be called by 'eval'
 	# in order to expand command-line arguments into variable declarations.
@@ -2142,9 +2361,9 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 	#
 	#   function myfunc() {
 	#     local std_PARSEARGS_parsed item1 item2 item3
-	#     eval $( std::parseargs "${@}" )
+	#     eval "$( std::parseargs "${@:-}" )"
 	#     (( std_PARSEARGS_parsed )) || {
-	#       eval set -- $( std::parseargs --strip -- "${@}" )
+	#       eval "set -- '$( std::parseargs --strip -- "${@:-}" )'"
 	#       item1="${1:-}"
 	#       item2="${2:-}"
 	#       item3="${3:-}"
@@ -2179,21 +2398,31 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 	# by a double-hyphen!
 	#
 
-	local -A result
+	#local -A std_PARSEARGS_result
+	local -a std_PARSEARGS_results=()
 
 	if echo "${*:-}" | grep -qw -- '--'; then
 		while [[ -n "${1:-}" ]]; do
-			current="${1}" ; shift
-			case "${current}" in
+			std_PARSEARGS_current="${1}" ; shift
+			case "${std_PARSEARGS_current}" in
 				--onevalue|--single)
-					onevalue=1
+					std_PARSEARGS_onevalue=1
 					;;
 				--unrecok|--permissive)
-					unrecok=1
+					std_PARSEARGS_unrecok=1
 					;;
 				--unrec|--unknown|--variable|--var)
 					if [[ -n "${1:-}" && "${1}" =~ ^[a-zA-Z_]+[a-zA-Z0-9_]*$ ]]; then
-						unassigned="${1}" ; shift
+						if ! [[ "${1}" =~ ^std_(PARSEARGS_.+|ERRNO)$ ]]; then
+							std_PARSEARGS_unassigned_var="${1}" ; shift
+						else
+							(( std_DEBUG )) && error "${FUNCNAME[0]##*_}: Specified name '${1}' is a reserved variable-name"
+							std_PARSEARGS_parsed=0
+							respond "std_PARSEARGS_parsed=${std_PARSEARGS_parsed:-0}"
+
+							std_ERRNO=$( errsymbol EARGS )
+							return 1
+						fi
 					else
 						(( std_DEBUG )) && error "${FUNCNAME[0]##*_}: Specified name '${1:-}' is not a valid variable-name"
 						std_PARSEARGS_parsed=0
@@ -2207,7 +2436,7 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 					break
 					;;
 				*)
-					(( std_DEBUG )) && error "${FUNCNAME[0]##*_}: Unknown option '${current}'"
+					(( std_DEBUG )) && error "${FUNCNAME[0]##*_}: Unknown option '${std_PARSEARGS_current}'"
 					std_PARSEARGS_parsed=0
 					respond "std_PARSEARGS_parsed=${std_PARSEARGS_parsed:-0}"
 
@@ -2217,61 +2446,96 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 			esac
 		done
 	fi
+	eval "local -a ${std_PARSEARGS_unassigned_var:-std_PARSEARGS_unassigned}=()"
 
-	arg="${unassigned}"
+	std_PARSEARGS_arg="${std_PARSEARGS_unassigned_var}"
 	while [[ -n "${1:-}" ]]; do
-		current="${1}" ; shift
+		std_PARSEARGS_current="${1}" ; shift
 
-		(( 0 == ${#current} )) && continue
+		(( 0 == ${#std_PARSEARGS_current} )) && continue
 
-		if [[ "${current:0:1}" == "-" ]]; then
-			arg="${current:1}"
+		if [[ "${std_PARSEARGS_current:0:1}" == "-" ]]; then
+			std_PARSEARGS_arg="${std_PARSEARGS_current:1}"
 
 			# Not necessarily IEEE 1003.1-2001, but according to
 			# bash source...
-			if ! [[ "${arg}" =~ ^[a-zA-Z_]+[a-zA-Z0-9_]*$ ]]; then
-				(( std_DEBUG )) && error "${FUNCNAME[0]##*_}: Provided name '${arg:-}' is not a valid variable-name"
+			if ! [[ "${std_PARSEARGS_arg:-}" =~ ^[a-zA-Z_]+[a-zA-Z0-9_]*$ ]]; then
+				(( std_DEBUG )) && error "${FUNCNAME[0]##*_}: Provided name '${std_PARSEARGS_arg:-}' is not a valid variable-name"
 				std_PARSEARGS_parsed=0
 				respond "std_PARSEARGS_parsed=${std_PARSEARGS_parsed:-0}"
 
 				std_ERRNO=$( errsymbol EARGS )
 				return 1
+			elif [[ "${std_PARSEARGS_arg}" =~ ^std_(PARSEARGS_.+|ERRNO)$ ]]; then
+				(( std_DEBUG )) && error "${FUNCNAME[0]##*_}: Provided name '${std_PARSEARGS_arg}' is a reserved variable-name"
+				std_PARSEARGS_parsed=0
+				respond "std_PARSEARGS_parsed=${std_PARSEARGS_parsed:-0}"
+
+				std_ERRNO=$( errsymbol EARGS )
+				return 1
+			else
+				declare -p "${std_PARSEARGS_arg}" >/dev/null 2>&1 || declare -a "${std_PARSEARGS_arg}"
+				if ! grep -qm 1 -- " ${std_PARSEARGS_arg} " <<<" ${std_PARSEARGS_results[*]:-} "; then # ` # <- Ubuntu syntax highlight fail
+					std_PARSEARGS_results+=( "${std_PARSEARGS_arg}" )
+				fi
 			fi
 		else
-			if [[ -z "${arg:-}" ]]; then
-				warn "${FUNCNAME[0]##*_}: Dropping argument '${current}'"
+			if [[ -z "${std_PARSEARGS_arg:-}" ]]; then
+				warn "${FUNCNAME[0]##*_}: Dropping argument '${std_PARSEARGS_current}'"
 				continue
 			fi
 
-			local existing="${result[${arg}]:-}"
-			if [[ -n "${existing:-}" && -n "${existing// /}" ]]; then
-				result[${arg}]="${existing} ${current}"
-			else
-				result[${arg}]="${current}"
+			#local std_PARSEARGS_existing="${std_PARSEARGS_result[${std_PARSEARGS_arg}]:-}"
+			#if [[ -n "${std_PARSEARGS_existing:-}" && -n "${std_PARSEARGS_existing// }" ]]; then
+			#	result[${std_PARSEARGS_arg}]="${std_PARSEARGS_existing} ${std_PARSEARGS_current}"
+			#else
+			#	result[${std_PARSEARGS_arg}]="${std_PARSEARGS_current}"
+			#fi
+			eval "${std_PARSEARGS_arg}+=( '${std_PARSEARGS_current}' )"
+			if [[ "${std_PARSEARGS_arg}" == "${std_PARSEARGS_unassigned_var}" ]]; then
+				if ! grep -qm 1 -- " ${std_PARSEARGS_arg} " <<<" ${std_PARSEARGS_results[*]:-} "; then # ` # <- Ubuntu syntax highlight fail
+					std_PARSEARGS_results+=( "${std_PARSEARGS_arg}" )
+				fi
 			fi
-			(( rc )) && if (( unrecok )) || [[ "${arg}" != "${unassigned}" ]]; then
-				rc=0
+			if (( std_PARSEARGS_rc )); then
+				if (( std_PARSEARGS_unrecok )) || [[ "${std_PARSEARGS_arg}" != "${std_PARSEARGS_unassigned_var}" ]]; then
+					std_PARSEARGS_rc=0
+				fi
 			fi
-			(( onevalue )) && arg="${unassigned}"
+			(( std_PARSEARGS_onevalue )) && std_PARSEARGS_arg="${std_PARSEARGS_unassigned_var}"
 		fi
 	done
 
-	if (( ! rc )); then
-		for arg in "${!result[@]}"; do
-			current="${result[${arg}]}"
-			if [[ "${current}" =~ \  ]]; then
-				respond "${arg// }='${current:-}'"
+	if (( ! std_PARSEARGS_rc )); then
+		#for std_PARSEARGS_arg in "${!std_PARSEARGS_result[@]}"; do
+		#	std_PARSEARGS_current="${std_PARSEARGS_result[${std_PARSEARGS_arg}]}"
+		#	if [[ "${std_PARSEARGS_current}" =~ \  ]]; then
+		#		respond "${std_PARSEARGS_arg// }='${std_PARSEARGS_current:-}'"
+		#	else
+		#		respond "${std_PARSEARGS_arg// }=${std_PARSEARGS_current:-}"
+		#	fi
+		#done
+		for std_PARSEARGS_arg in "${std_PARSEARGS_results[@]:-}"; do
+			if [[ -n "${std_PARSEARGS_arg:-}" ]]; then
+				if declare -p "${std_PARSEARGS_arg}" >/dev/null 2>&1; then
+					respond "$( declare -p "${std_PARSEARGS_arg}" )"
+				else
+					warn "${FUNCNAME[0]##*_}: Variable '${std_PARSEARGS_arg}' exists but is empty"
+					std_PARSEARGS_rc=1
+				fi
 			else
-				respond "${arg// }=${current:-}"
+				warn "${FUNCNAME[0]##*_}: Unbound variable '${std_PARSEARGS_arg}'"
+				std_PARSEARGS_rc=1
 			fi
 		done
 	fi
 
-	std_PARSEARGS_parsed=$(( !( rc ) ))
+	std_PARSEARGS_parsed=$(( !( std_PARSEARGS_rc ) ))
 	respond "std_PARSEARGS_parsed=${std_PARSEARGS_parsed:-0}"
 
-	(( rc )) && std_ERRNO=$( errsymbol EARGS )
-	return ${rc}
+	(( std_PARSEARGS_rc )) && std_ERRNO=$( errsymbol EARGS )
+
+	return ${std_PARSEARGS_rc}
 } # __STDLIB_API_1_std::parseargs # }}}
 
 
@@ -2282,10 +2546,10 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 ###############################################################################
 
 function __STDLIB_API_1_std::configure() { # {{{
-	local prefix exec_prefix bindir sbindir libexecdir sysconfdir
-	local sharedstatedir localstatedir runstatedir libdir includedir
-	local oldincludedir datarootdir datadir infodir localedir mandir docdir
-	local htmldir
+	local -a prefix=() exec_prefix=() bindir=() sbindir=() libexecdir=() sysconfdir=()
+	local -a sharedstatedir=() localstatedir=() runstatedir=() libdir=() includedir=()
+	local -a oldincludedir=() datarootdir=() datadir=() infodir=() localedir=() mandir=() docdir=()
+	local -a htmldir=()
 
 	# Built-in functions should avoid depending on parseargs(), but in this
 	# case the sheer number of options makes this the only sensible
@@ -2295,56 +2559,61 @@ function __STDLIB_API_1_std::configure() { # {{{
 	local std_PARSEARGS_parsed=0
 	eval "$( std::parseargs "${@:-}" )"
 	(( std_PARSEARGS_parsed )) || {
-		eval set -- "$( std::parseargs --strip -- "${@:-}" )"
-		prefix="${1:-}"
-		exec_prefix="${2:-}"
-		bindir="${3:-}"
-		sbindir="${4:-}"
-		libexecdir="${5:-}"
-		sysconfdir="${6:-}"
-		sharedstatedir="${7:-}"
-		localstatedir="${8:-}"
-		runstatedir="${9:-}"
-		libdir="${10:-}"
-		includedir="${11:-}"
-		oldincludedir="${12:-}"
-		datarootdir="${13:-}"
-		datadir="${14:-}"
-		infodir="${15:-}"
-		localedir="${16:-}"
-		mandir="${17:-}"
-		docdir="${18:-}"
-		htmldir="${19:-}"
+		(( std_DEBUG & 2 )) && {
+			warn "std::parseargs found no tagged arguments in ${FUNCNAME[0]##*_}:"
+			warn "std::parseargs '${*:-}'"
+		}
+
+		eval "set -- '$( std::parseargs --strip -- "${@:-}" )'"
+		prefix=( "${1:-}" )
+		exec_prefix=( "${2:-}" )
+		bindir=( "${3:-}" )
+		sbindir=( "${4:-}" )
+		libexecdir=( "${5:-}" )
+		sysconfdir=( "${6:-}" )
+		sharedstatedir=( "${7:-}" )
+		localstatedir=( "${8:-}" )
+		runstatedir=( "${9:-}" )
+		libdir=( "${10:-}" )
+		includedir=( "${11:-}" )
+		oldincludedir=( "${12:-}" )
+		datarootdir=( "${13:-}" )
+		datadir=( "${14:-}" )
+		infodir=( "${15:-}" )
+		localedir=( "${16:-}" )
+		mandir=( "${17:-}" )
+		docdir=( "${18:-}" )
+		htmldir=( "${19:-}" )
 	}
 
-	if [[ -n "${prefix:-}" ]]; then
-		export PREFIX="${prefix%/}"
+	if [[ -n "${prefix[*]:-}" ]]; then
+		export PREFIX="${prefix[0]%/}"
 	else
 		export PREFIX="/usr/local"
 	fi
-	if [[ -n "${exec_prefix:-}" ]]; then
-		export EXEC_PREFIX="${exec_prefix%/}"
+	if [[ -n "${exec_prefix[*]:-}" ]]; then
+		export EXEC_PREFIX="${exec_prefix[0]%/}"
 	else
 		export EXEC_PREFIX="${PREFIX}"
 	fi
 
-	export BINDIR="${bindir:-${EXEC_PREFIX}/bin}"
-	export SBINDIR="${sbindir:-${EXEC_PREFIX}/sbin}"
-	export LIBEXECDIR="${libexecdir:-${EXEC_PREFIX}/libexec}"
-	export SYSCONFDIR="${sysconfdir:-${PREFIX}/etc}"
-	export SHAREDSTATEDIR="${sharedstatedir:-${PREFIX}/com}"
-	export LOCALSTATEDIR="${localstatedir:-${PREFIX}/var}"
-	export RUNSTATEDIR="${runstatedir:-${LOCALSTATEDIR}/run}"
-	export LIBDIR="${libdir:-${EXEC_PREFIX}/lib}"
-	export INCLUDEDIR="${includedir:-${PREFIX}/include}"
-	export OLDINCLUDEDIR="${oldincludedir:-/usr/include}"
-	export DATAROOTDIR="${datarootdir:-${PREFIX}/share}"
-	export DATADIR="${datadir:-${DATAROOTDIR}}"
-	export INFODIR="${infodir:-${DATAROOTDIR}/info}"
-	export LOCALEDIR="${localedir:-${DATAROOTDIR}/locale}"
-	export MANDIR="${mandir:-${DATAROOTDIR}/man}"
-	export DOCDIR="${docdir:-${DATAROOTDIR}/doc}"
-	export HTMLDIR="${htmldir:-${DOCDIR}}"
+	export BINDIR="${bindir[0]:-${EXEC_PREFIX}/bin}"
+	export SBINDIR="${sbindir[0]:-${EXEC_PREFIX}/sbin}"
+	export LIBEXECDIR="${libexecdir[0]:-${EXEC_PREFIX}/libexec}"
+	export SYSCONFDIR="${sysconfdir[0]:-${PREFIX}/etc}"
+	export SHAREDSTATEDIR="${sharedstatedir[0]:-${PREFIX}/com}"
+	export LOCALSTATEDIR="${localstatedir[0]:-${PREFIX}/var}"
+	export RUNSTATEDIR="${runstatedir[0]:-${LOCALSTATEDIR}/run}"
+	export LIBDIR="${libdir[0]:-${EXEC_PREFIX}/lib}"
+	export INCLUDEDIR="${includedir[0]:-${PREFIX}/include}"
+	export OLDINCLUDEDIR="${oldincludedir[0]:-/usr/include}"
+	export DATAROOTDIR="${datarootdir[0]:-${PREFIX}/share}"
+	export DATADIR="${datadir[0]:-${DATAROOTDIR}}"
+	export INFODIR="${infodir[0]:-${DATAROOTDIR}/info}"
+	export LOCALEDIR="${localedir[0]:-${DATAROOTDIR}/locale}"
+	export MANDIR="${mandir[0]:-${DATAROOTDIR}/man}"
+	export DOCDIR="${docdir[0]:-${DATAROOTDIR}/doc}"
+	export HTMLDIR="${htmldir[0]:-${DOCDIR}}"
 
 	if [[ -d "${PREFIX:-}/" && -d "${EXEC_PREFIX:-}/" ]]; then
 		std_ERRNO=0
@@ -2482,144 +2751,6 @@ function __STDLIB_API_1_std::configure() { # {{{
 
 # }}}
 
-###############################################################################
-#
-# stdlib.sh - Code tests - Confirm correct operation of more complex functions
-#
-########################################################################### {{{
-
-# N.B.: These functions are not versioned, as they aren't intended for general
-#       use.  However, functions are free to interrogate the API version and
-#       may still perform version-specific tests.
-#
-function http::test() { # {{{
-	local -i ic=0 rc=0 code=0 result=0
-
-	(( STDLIB_HAVE_BASH_4 )) || {
-		(( std_DEBUG )) && error "${FUNCNAME[0]##*_} requires bash-4 associative arrays"
-
-		std_ERRNO=$( errsymbol ENOEXE )
-		return 1
-	}
-
-	local -A codes
-	# 1xx Informational
-	codes[100]='Continue'
-	codes[101]='Switching Protocols'
-	# Non-2616 Status Codes
-	codes[102]='Processing' # RFC2518; WebDAV
-	# 2xx Successful
-	codes[200]='OK'
-	codes[201]='Created'
-	codes[202]='Accepted'
-	codes[203]='Non-Authoritative Information' # Since HTTP/1.1
-	codes[204]='No Content'
-	codes[205]='Reset Content'
-	codes[206]='Partial Content'
-	# Non-2616 Status Codes
-	codes[207]='Multi-Status' # RRC4918; WebDAV
-	codes[208]='Already Reported' # RFC5842; WebDAV
-	codes[226]='IM Used' # RFC3229; WebDAV
-	# 3xx Redirection
-	codes[300]='Multiple Choices'
-	codes[301]='Moved Permanently'
-	codes[302]='Found'
-	codes[303]='See Other' # Since HTTP/1.1
-	codes[304]='Not Modified'
-	codes[305]='Use Proxy' # Since HTTP/1.1
-	codes[306]='(Switch Proxy - Unused)'
-	codes[307]='Temporary Redirect'
-	# Non-2616 Status Codes
-	codes[308]='Permanent Redirect' # RFC7238; Experimental
-	# 4xx Client Error
-	codes[400]='Bad Request'
-	codes[401]='Unauthorized'
-	codes[402]='Payment Required'
-	codes[403]='Forbidden'
-	codes[404]='Not Found'
-	codes[405]='Method Not Allowed'
-	codes[406]='Not Acceptable'
-	codes[407]='Proxy Authentication Required'
-	codes[408]='Request Timeout'
-	codes[409]='Conflict'
-	codes[410]='Gone'
-	codes[411]='Length Required'
-	codes[412]='Precondition Failed'
-	codes[413]='Request Entity Too Large'
-	codes[414]='Request-URI Too Long'
-	codes[415]='Unsupported Media Type'
-	codes[416]='Requested Range Not Satisfiable'
-	codes[417]='Expectation Failed'
-	# Non-2616 Status Codes
-	codes[418]="I'm a teapot" # RFC2324
-	codes[419]='Authentication Timeout' # *Not* in RFC2616
-	codes[420]='Method Failure/Enhance Your Calm' # Spring; Deprecated/Twitter API v1.0
-	codes[421]='Expectation Failed'
-	codes[422]='Unprocessable Entity' # RFC4918; WebDAV
-	codes[423]='Locked' # RFC4918; WebDAV
-	codes[424]='Failed Dependency' # RFC4918; WebDAV
-	codes[426]='Upgrade Required'
-	codes[428]='Precondition Required' # RFC6585
-	codes[429]='Too Many Requests' # RFC6585
-	codes[431]='Request Header Fields Too Large' # RFC6585
-	codes[440]='Login Timeout' # Microsoft
-	codes[444]='No Response' # nginx
-	codes[449]='Retry With' # Microsoft
-	codes[450]='Blocked by Windows Parental Controls' # Microsoft
-	codes[451]='Unavailable For Legal Reasons/Redirect' # Draft/Microsoft
-	codes[494]='Request Header Too Large' # nginx
-	codes[495]='Cert Error' # nginx
-	codes[496]='No Cert' # nginx
-	codes[497]='HTTP to HTTPS' # nginx
-	codes[498]='Token expired/invalid' # ersi
-	codes[499]='Client Closed Request/Token Required' # nginx/ersi
-	# 5xx Server Error
-	codes[500]='Internal Server Error'
-	codes[501]='Not Implemented'
-	codes[502]='Bad Gateway'
-	codes[503]='Service Unavailable'
-	codes[504]='Gateway Timeout'
-	codes[505]='HTTP Version Not Supported'
-	# Non-2616 Status Codes
-	codes[506]='Variant Also Negotiates' # RFC2295
-	codes[507]='Insufficient Storage' # RFC4918; WebDAV
-	codes[508]='Loop Detected' # RFC5842; WebDAV
-	codes[509]='Bandwidth Limit Exceeded' # Apache
-	codes[510]='Not Extended' # RFC2774
-	codes[511]='Network Authentication Required' # RFC6585
-	codes[520]='Origin Error' # CloudFlare
-	codes[521]='Web server is down' # CloudFlare
-	codes[522]='Connection timed out' # CloudFlare
-	codes[523]='Proxy Declined Request' # CloudFlare
-	codes[524]='A timeout occurred' # CloudFlare
-	codes[598]='Network read timeout error' # Microsoft
-	codes[599]='Network connect timeout error' # Microsoft
-
-	output "Testing HTTP-to-shell response-code mappings\n"
-	output "N.B.: non-RFC2616 status codes are expected failures\n"
-
-	std_ERRNO=0
-
-	# 'ic' and 'code' are numeric, and therefore not subject to word-splitting
-	# shellcheck disable=SC2086
-	for code in $( for ic in "${!codes[@]}"; do echo ${ic}; done | sort -n ); do
-		std::http::squash ${code} 2>/dev/null ; ic=${?}
-		rc=$( std::http::expand ${ic} )
-		if (( code == rc )); then
-			info "${code} '${codes[${code}]}' -> ${ic} -> ${rc} : Okay"
-		else
-			warn "${code} '${codes[${code}]}' -> ${ic} -> ${rc} : FAIL"
-			result=1
-			std_ERRNO=$( errsymbol EERROR )
-		fi
-	done
-
-	# Don't stomp std_ERRNO
-	return ${result}
-} # http::test # }}}
-
-# }}}
-
 
 ###############################################################################
 #
@@ -2642,9 +2773,6 @@ unset __STDLIB_oneshot_syntax_check
 
 __STDLIB_oneshot_errno_init
 unset __STDLIB_oneshot_errno_init
-
-__STDLIB_oneshot_colours_init
-unset __STDLIB_oneshot_colours_init
 
 declare -i __STDLIB_API="${STDLIB_API:-1}"
 case "${__STDLIB_API}" in
@@ -2720,8 +2848,8 @@ while read -r fapi; do
 	# Export all API versions, so that explicit implmentations are still
 	# available...
 	#
-	#if grep -q "^__STDLIB_API_" <<<"${fapi}"; then
-	if echo "${fapi}" | grep -q "^__STDLIB_API_"; then
+	#if echo "${fapi}" | grep -q "^__STDLIB_API_"; then
+	if grep -q "^__STDLIB_API_" <<<"${fapi}"; then # ` # <- Ubuntu syntax highlight fail
 
 		# Ensure that function is still available...
 		#
@@ -2784,6 +2912,9 @@ typeset -gax __STDLIB_functionlist
 
 typeset -gix STDLIB_HAVE_STDLIB=1
 
+__STDLIB_oneshot_colours_init
+unset __STDLIB_oneshot_colours_init
+
 if [[ -r "${std_LIBPATH}"/memcached.sh ]]; then
 	if [[ -n "${STDLIB_WANT_MEMCACHED:-}" ]] && ! (( STDLIB_HAVE_MEMCACHED )); then
 		# shellcheck source=/usr/local/lib/memcached.sh disable=SC1091
@@ -2794,7 +2925,7 @@ fi
 
 # }}}
 
-fi # [[ "$( type -t std::sentinel 2>&1 )" != "function" ]] # Line 41
+fi # [[ "$( type -t std::sentinel 2>&1 )" != "function" ]] # Line 64
 
 
 ###############################################################################

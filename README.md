@@ -15,11 +15,15 @@ from `~/.bashrc` in order to speed individual script execution.
 Orientation
 ===========
 
-`stdlib.sh` requires at least `bash-2.02` (for `[[ ... ]]` in-process conditional
-evaluation), and several functions use the `=~` regular-expression match
-operator introduced in `bash-3`.  If `bash-4` features such as associative
-arrays are available, then the environment variable `STDLIB_HAVE_BASH_4` is set
-on load - see below.
+`stdlib.sh` requires at least `bash-2.02` (for `[[ ... ]]` in-process
+conditional evaluation), and several functions use the `=~` regular-expression
+match operator introduced in `bash-3`.  If `bash-4` features such as
+associative arrays are available, then the environment variable
+`STDLIB_HAVE_BASH_4` is set on load - see below.
+
+Invoking a script which employs `stdlib.sh` with the `DEBUG` environment
+variable set may produce additional diagnostic output.  Explicitly setting
+`DEBUG=2` will additionally output `stdlib.sh` internal diagnostic information.
 
 Coding Standards
 ================
@@ -96,6 +100,7 @@ Functions
 | `std::usage()`          | Output help text from `${std_USAGE}` or std::usage-message()                                   |
 | `std::wrap()`           | Format text to wrap to the width of the console at a word-end - N.B. Requires 'export COLUMNS' |
 | `std::log()`            | Output text to console, file, or syslog                                                        |
+| `std::colour()`         | Optionally determine intended text colour from string prefix, and return text with ANSI escapes|
 | `die()`                 | Output text in a standardised format and exit with a failure code                              |
 | `error()`               | Output text in a standardised format                                                           |
 | `warn()`                | Output text in a standardised format                                                           |
@@ -120,9 +125,23 @@ Functions
 | `std::ensure()`         | Exit with a specified error message if a command fails                                         |
 | `std::silence()`        | Execute a command and drop all output (e.g. `>/dev/null 2>&1`)                                 |
 | `std::wordsplit()`      | Return each whitespace-separated element from the (quoted) input, without unexpected globbing  |
+| `std::findfile()`       | Given an application name, file name, and default directory find a likely data file            |
 | `std::getfilesection()` | Retrieve a single section from a Windows-style .ini file with square-bracketed section titles  |
 | `std::parseargs()`      | Allow functions to accept named parameters with only minor code-changes                        |
 | `std::configure()`      | Export variables containing the standard system paths as used by `configure` scripts           |
 | `std::http::squash()`   | Map HTTP response codes (100-599) down to shell return codes (0-255) by squashing unused values|
 | `std::http::expand()`   | Map shell return codes (0-255) back up to HTTP response codes (100-599)                        |
 
+Configuration Files
+===================
+
+The example file `stdlib-colour.map` may be copied to `/etc/stdlib/colour.map`
+or `/etc/stdlib.colour.map`, or similar locations beneath `/usr/local/etc` - or
+even `~/.stdlib/colour.map` or `~/.stdlib.colour.map`, or an alternate location
+may be specified by setting the environment variable `STDLIB_COLOUR_MAP` to the
+full path to the map file.  `stdlib-colour.map` documents the available colour
+options.
+
+The colour mappings from `stdlib-colour.map` are used when `stdlib.sh` is
+sourced with the environment variable `STDLIB_WANT_COLOUR` set - for
+compatibility, colourised output is disabled by default.
