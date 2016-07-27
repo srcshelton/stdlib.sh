@@ -872,7 +872,8 @@ function __STDLIB_API_1_std::colour() { # {{{
 		type=( "${1:-}" )
 		type=( "${type// *}" )
 	fi
-	case "${type[*]:-}" in
+	local -l newtype="${type[*]:-}"
+	case "${newtype:-}" in
 		exec*)
 			type=( "exec" )
 			;;
@@ -889,16 +890,44 @@ function __STDLIB_API_1_std::colour() { # {{{
 			type=( "warn" )
 			;;
 	esac
-	type=( "${__STDLIB_COLOURMAP["${type//[^a-z]}"]:-}" )
-	if [[ -n "${type[*]:-}" ]]; then
-		# type is a prefix from __STDLIB_COLOURMAP, and t is a colour
-		# index...
-		(( value1 = ${type[*]} ))
+	unset newtype
+	if [[ -n "${type//[^a-z]}" ]]; then
+		type=( "${__STDLIB_COLOURMAP["${type//[^a-z]}"]:-}" )
+		if [[ -n "${type[*]:-}" ]]; then
+			# type is a prefix from __STDLIB_COLOURMAP, and t is a colour
+			# index...
+			(( value1 = ${type[*]} ))
+		fi
 	fi
 
-	# We now do actually want to word-split our arguments...
-	# shellcheck disable=SC2068
-	set -- ${@:-}
+	# Word-split our arguments, but maintain spacing also...
+	string="${*:-}"
+	local -a newargs=()
+	local char='' word=""
+	local -i pos=0 lastspace=0
+	for (( pos = 0 ; pos < ${#string} ; pos++ )); do
+		char="${string:${pos}:1}"
+		if (( lastspace )); then
+			if [[ ' ' == "${char}" ]]; then
+				word+="${char}"
+			else
+				lastspace=0
+				newargs+=( "${word% }" )
+				word="${char}"
+			fi
+		else
+			if [[ ' ' == "${char}" ]]; then
+				lastspace=1
+			fi
+			word+="${char}"
+		fi
+	done
+	if [[ -n "${word:-}" ]]; then
+		newargs+=( "${word}" )
+	fi
+	set -- "${newargs[@]:-}"
+	unset lastspace pos word char newargs
+	string=""
 
 	if [[ -z "${value1:-}" && -z "${value2:-}" ]]; then
 		respond "${*:-}"

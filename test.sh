@@ -254,6 +254,22 @@ function output::test() { # {{{
 	error "Error"
 	( die "Die" )
 
+	output "\nSpacing test:"
+	output "         11111111112"
+	output "12345678901234567890"
+	std::colour -colour white "1                   "
+	std::colour -colour white "    5               "
+	std::colour -colour white "1   5               "
+	std::colour -colour white "        9           "
+	std::colour -colour white "1       9           "
+	std::colour -colour white "    5   9           "
+	std::colour -colour white "1   5   9           "
+	std::colour -colour white "1   5   9   *       "
+	std::colour -colour white "1   5   9   *   +   "
+	echo " $( std::colour -colour white "2 4 6 8 - * + ! @ #" )x"
+	echo -n ' ' ; echo -n "$( std::colour -colour white "2 4 6 8 - * + ! @ #" )" ; echo 'x'
+	echo -n "$( std::colour -colour white "1 3 5 7 9 # @ ! + *" )" ; echo ' x'
+
 	output "\nColourisation test complete"
 
 	# Defined in stdlib.sh
