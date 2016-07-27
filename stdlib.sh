@@ -1751,7 +1751,7 @@ function __STDLIB_API_1_std::inherit() { # {{{
 
 	if (( exported )) && env | grep -q "^${var}="; then
 		:
-	elif (( ! exported )) && [[ -n "${!var}" ]]; then
+	elif (( ! exported )) && [[ -n "${!var:-}" ]]; then
 		:
 	else
 		[[ -n "${val[*]:-}" ]] || {
