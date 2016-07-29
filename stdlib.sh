@@ -39,7 +39,7 @@ done
 # shellcheck disable=SC2015
 # shellcheck source=/usr/local/lib/stdlib.sh
 [[ -r "${std_LIBPATH}/${std_LIB}" ]] && source "${std_LIBPATH}/${std_LIB}" || {
-	echo >&2 "FATAL:  Unable to source ${std_LIB} functions"
+	echo >&2 "FATAL:  Unable to source ${std_LIB} functions: ${?}"
 	exit 1
 }
 
@@ -78,9 +78,31 @@ EOC
 if [[ "$( type -t std::sentinel 2>&1 )" == "function" ]]; then
 	# We've already initialised, and all funcions are (assumed to be)
 	# present.
-	:
-else # See line 2723
+
+	# ... however, if we're the child of a parent which included stdlib,
+	# then we appear to inherit all functions and non-array variables, but
+	# lose (at least) associative arrays.  In this case, we need to re-load
+	# these data-structures.  This does mean that we can no longer unset
+	# one-shot functions for efficiency's sake.
+
+	if ! (( __STDLIB_SHLVL == SHLVL )); then
+		__STDLIB_oneshot_errno_init
+		__STDLIB_oneshot_colours_init
+
+		# ... also reset NAME, which likely now refers to the parent
+		# also:
+
+		NAME="$( basename -- "${0:-${std_LIB:-stdlib.sh}}" )"
+		[[ "${NAME:-}" == "$( basename -- "${SHELL:-bash}" )" ]] && \
+			NAME="${std_LIB:-stdlib.sh}"
+	fi
+else # See line 3172
 if [[ -n "${STDLIB_HAVE_STDLIB:-}" ]]; then # {{{
+
+	# We only get here if std::sentinel (see above) is unset but we still
+	# have STDLIB_HAVE_STDLIB set - this has been observed post Shellshock
+	# due to the security changes applied to bash...
+
 	if [[ -z "${NAME:-}" ]]; then
 
 		# shellcheck disable=SC2031
@@ -101,11 +123,12 @@ if [[ -n "${STDLIB_HAVE_STDLIB:-}" ]]; then # {{{
 	echo >&2
 fi # }}}
 
+declare -i __STDLIB_SHLVL=${SHLVL:-1}
 
 # What API version are we exporting?
 #
 # The version format used for this project is:
-# <API version>.<Major version>[.<Minor version>]
+# <Highest API version>.<Major version>[.<Minor version>]
 #
 #export  std_RELEASE="1.3"   # Initial import
 #export  std_RELEASE="1.4"   # Add std::parseargs
@@ -121,11 +144,18 @@ fi # }}}
                              # std::wordsplit
 #export  std_RELEASE="1.5.0" # Add std::inherit, finally make errno functions
                              # work!  Set std_ERRNO where appropriate
-export   std_RELEASE="1.5.1" # Added support for coloured output via
+#export  std_RELEASE="1.5.1" # Added support for coloured output via
                              # std::colour and add std::findfile, fix
                              # std::parseargs to handle multi-element input and
                              # to return arrays (which is luckily non API-
                              # breaking)
+export   std_RELEASE="2.0.0" # std::inherit becomes the first function to be
+                             # available in multiple API versions
+                             # std::wrap now appends a lower-case (optional)
+                             # prefix to wrapped follow-on lines
+                             # Many fixes for correct operation when inheriting
+                             # stdlib from parent shell
+                             # std::requires now works properly ;)
 readonly std_RELEASE
 
 
@@ -179,8 +209,8 @@ EOC
 #
 # Externally set control-variables:
 #
-# STDLIB_API		- Specify the stdlib API to adhere to, currently only
-# 			  API version '1' is a supported value;
+# STDLIB_WANT_API	- Specify the stdlib API to adhere to, currently only
+# 			  API versions '1' and '2' are supported values;
 #
 # Set (to '1') to activate:
 #
@@ -503,7 +533,8 @@ function __STDLIB_oneshot_colours_init() { # {{{
 
 	# TODO: Read in categories from config file?
 
-	#__STDLIB_COLOURMAP["type"]=$(( ( mode << 16 ) + ( background << 8 ) + foreground ))
+	# __STDLIB_COLOURMAP["type"]=$(( ( mode << 16 ) + ( background << 8 ) + foreground ))
+	#
 	__STDLIB_COLOURMAP["debug"]=$(( cyan ))
 	__STDLIB_COLOURMAP["error"]=$(( red ))
 	__STDLIB_COLOURMAP["exec"]=$(( magenta ))
@@ -698,7 +729,7 @@ function __STDLIB_API_1_std::usage() { # {{{
 
 	# 'rc' is numeric, and therefore not subject to word-splitting
 	# shellcheck disable=SC2086
-	exit ${rc}
+	__STDLIB_API_1_std::cleanup ${rc}
 } # __STDLIB_API_1_std::usage # }}}
 
 
@@ -724,13 +755,18 @@ function __STDLIB_API_1_std::wrap() { # {{{
 	(( columns )) || columns=80
 
 	if [[ -n "${prefix:-}" ]]; then
+		# Attempt to sanitise input to sed, which can break in many
+		# non-obvious ways...
+		prefix="$( LC_ALL=C sed -e 's/[^a-zA-Z0-9,._+@%/-]/\\&/g; 1{$s/^$/""/}; 1!s/^/"/; $!s/$/"/' <<<"${prefix}" )"
+		local -l lprefix="${prefix}"
+
 		if (( columns > ( ${#prefix} + 2 ) )); then
 			  output "${text}" \
 			| fold -sw "$(( columns - ( ${#prefix} + 1 ) ))" \
-			| sed "s/^/${prefix} /"
+			| sed "s|^|${lprefix} | ; 1{s|^${lprefix}|${prefix}|}"
 		else
 			  output "${text}" \
-			| sed "s/^/${prefix} /"
+			| sed "s|^|${prefix} | ; 1{s|^${lprefix}|${prefix}|}"
 		fi
 	else
 		if (( columns > 1 )); then
@@ -771,8 +807,6 @@ function __STDLIB_API_1_std::log() { # {{{
 			-t "${NAME}" -- "${message}" >/dev/null 2>&1
 	fi
 
-	#local date="$( date -u +'%Y%m%d %R.%S' )"
-	#message="${NAME}(${$}) ${date} ${prefix} ${data}"
 	message="${NAME}(${$}) $( date -u +'%Y%m%d %R.%S' ) ${prefix} ${data}"
 
 	# We don't care whether std_LOGFILE exists, but we do care whether it's
@@ -1387,16 +1421,13 @@ function __STDLIB_API_1_std::mktemp() { # {{{
 	for file in "${files[@]}"; do
 		name="${file}.XXXXXXXX${suffix[*]:+.${suffix[*]}}"
 
-		# Otherwise undocumented, **potentially dangerous**, configuration setting...
+		# Otherwise undocumented, **POTENTIALLY DANGEROUS**, configuration setting...
 		if [[ -n "${STDLIB_REUSE_TEMPFILES:-}" ]]; then
 			local filename
-			#filename="$( ls -1 "${tmpdir[0]}"/"${NAME}.${file}."* 2>/dev/null | tail -n 1 )"
 			filename="$( find "${tmpdir[0]}" -mindepth 1 -maxdepth 1 -name "${NAME}.${file}.*" -print 2>/dev/null | tail -n 1 )"
 
 			if [[ -n "${filename:-}" && -w "${filename}" ]]; then
-				# We're intentionally matching the literal quote characters here...
-				# shellcheck disable=SC2076
-				[[ " ${__STDLIB_OWNED_FILES[@]} " =~ " ${filename} " ]] || \
+				[[ " ${__STDLIB_OWNED_FILES[*]} " =~ \ ${filename}\  ]] || \
 					__STDLIB_OWNED_FILES+=( "${filename}" )
 
 				cat /dev/null > "${filename}" 2>/dev/null
@@ -1531,19 +1562,64 @@ function __STDLIB_API_1_std::push() { # {{{
 	local std_push_result="" std_push_var std_push_current std_push_segment std_push_arg std_push_add_quote=""
 	local -i rc=0
 
-set -o xtrace
+	# Martin Väth's original push.sh states that "This project is under the
+	# BSD license", but otherwise includes no further terms or indeed any
+	# licence text.
+	# The BSD licence requires that the licence text itself be included
+	# with any code it covers, so the actual situation is ... unclear, at
+	# best.  It would appear that the spirit of the BSD licence is met by
+	# including Martin's licensing statement, as above.
 
+	# "Treat a variable like an array, quoting args"
 	#
 	# Usage: std::push [-c] VARIABLE [arguments]
 	#
-	# -c : Clear VARIABLE before adding [arguments]
+	# -c : clear VARIABLE before adding [arguments]
 	#
 	# The arguments will be appended to VARIABLE in a quoted manner (with
 	# quotes rarely used - the exact form depends on the version of the
 	# script) so that an "eval" $VARIABLE obtains the collected arguments
 	#
+	# The first call for VARIABLE must always include '-c'
+	# The return value will be zero if $VARIABLE contains at least one
+	# push()ed argument
+	#
+	# e.g.
+	#
+	# $ std::push -c text 'data with symbols such as ()"\' "'another arg'"
+	# $ std::push text further args
+	# $ eval "printf '%s\\n' ${text}"
+	# data with symbols such as ()"\
+	# 'another arg'
+	# further
+	# args
+	#
+	# Remove the last argument from the argument list in a script:
+	# $ std::push -c args
+	# $ while [ ${#} -gt 1 ]
+	# > do std::push args "${1}"
+	# > shift
+	# > done
+	# $ eval "set -- x ${args}" ; shift # x is shifted out, but prevents
+	#                                   # Bourne sh from breaking...
+	#
+	# Quote a command for use with 'su' (even if it contains spaces, '<',
+	# or quotes):
+	# $ std::push -c files "${@}" && su -c "cat -- ${files}"
+	#
+	# Pretty-print a command:
+	# $ set -- source~1 'source 2# "source '3'"
+	# $ std::push -c v cp -- "${@}" \~dest
+	# $ printf '%s\n' "${v}"
+	# cp -- source~1 'source 2' 'source '\'3\' '~dest'
+	#
+	# Test whether a variable is set:
+	# $ std::push -c data
+	# $ myfunction
+	# $ std::push data || echo 'Nothing was added to $data by myfunction()'
+	#
 
-	# ... one of the most obfuscated shell functions I've ever come across
+	# ... one of the most obfuscated shell functions I've ever come across!
 
 	# Clear accumulator, or save current VARIABLE contents...
 	#
@@ -1634,9 +1710,8 @@ set -o xtrace
 	eval "[[ -n \"\${${std_push_var}:-}\" ]]"
 	rc=${?}
 
-set +o xtrace
+	(( std_DEBUG & 2 )) && debug " std_push_var='${std_push_var}', value=|$( eval echo "\"\${${std_push_var}:-}\"" )|, rc=${rc}"
 
-echo "Debug: std_push_var='${std_push_var}', value=|$( eval echo "\"\${${std_push_var}:-}\"" )|, rc=${rc}"
 	std_ERRNO=0
 	(( rc )) && std_ERRNO=$( errsymbol EERROR )
 	return ${rc}
@@ -1651,6 +1726,7 @@ echo "Debug: std_push_var='${std_push_var}', value=|$( eval echo "\"\${${std_pus
 
 function __STDLIB_API_1_std::readlink() { # {{{
 	local file="${1:-}" ; shift
+	local -i rc=0
 
 	[[ -n "${file:-}" ]] || {
 		std_ERRNO=$( errsymbol EARGS )
@@ -1660,25 +1736,76 @@ function __STDLIB_API_1_std::readlink() { # {{{
 	# Find the target of a symlink, in circumstances where GNU readlink is
 	# not available
 
-	# FIXME: Non-trivial implementation which is actually usable on, for
-	#        example, Mac OS...
+	# TODO: Implement GNU arguments...
 	#
-	if [[ -L "${file}" ]]; then
-		#readlink "${file}" # <- Will actually, in a fairly consistent
-		                    #    way, do the same as the line below.
-				    #    The real need is for -[fem] options...
-		# We're looking to easily find symlink targets - MacOS has
-		# 'stat -F' (which doesn't work with GNU userland) whilst
-		# GNU tools don't work on BSD/MacOS...
-		# shellcheck disable=SC2012
-		respond "$( ls -l "${file}" | sed 's/^.* -> //' )"
+	# GNU readlink manpage states:
+	#       Print value of a symbolic link or canonical file name
+	#
+	#       -f, --canonicalize
+	#              canonicalize by following every symlink in every
+	#              component of the given name recursively; all but the
+	#              last component must exist
+	#
+	#       -e, --canonicalize-existing
+	#              canonicalize by following every symlink in every
+	#              component of the given name recursively, all components
+	#              must exist
+	#
+	#       -m, --canonicalize-missing
+	#              canonicalize by following every symlink in every
+	#              component of the given name recursively, without
+	#              requirements on components existence
+	#
+	#       -n, --no-newline
+	#              do not output the trailing delimiter
+	#
+	#       -q, --quiet
+	#
+	#       -s, --silent
+	#              suppress most error messages
+	#
+	#       -v, --verbose
+	#              report error messages
+	#
+	#       -z, --zero
+	#              end each output line with NUL, not newline
+	#
+
+	if type -pf perl >/dev/null 2>&1; then
+		if perl -MCwd=abs_path </dev/null >/dev/null 2>&1; then
+			respond "$( perl -MCwd=abs_path -le 'print abs_path readlink(shift);' "${file}" )"
+
+			std_ERRNO=0
+			return 0
+		fi
+	fi
+
+	# FIXME: The code below doesn't handle loops - import code and/or tests
+	#        from https://github.com/mkropat/sh-realpath/?
+	local result
+	result="$(
+		cd "$( dirname -- "${file}" )" || exit 1
+		file="$( basename -- "${file}" )"
+
+		while [[ -L "${file}" ]]; do
+			file="$( readlink -- "${file}" )"
+			cd "$( dirname -- "${file}" )" || exit 1
+			file="$( basename -- "${file}" )"
+		done
+
+		local dir
+		dir="$( pwd -P )"
+		respond "${dir:-}"/"${file}"
+	)"
+	rc=${?}
+
+	if (( ! rc )) && [[ -n "${result:-}" ]]; then
+		respond "${result}"
 
 		std_ERRNO=0
 		return 0
 	else
-		respond "${file}"
-
-		std_ERRNO=0
+		std_ERRNO=$( errsymbol ENOTFOUND )
 		return 1
 	fi
 
@@ -1695,26 +1822,26 @@ function __STDLIB_API_1_std::readlink() { # {{{
 ###############################################################################
 
 function __STDLIB_API_1_std::inherit() { # {{{
-	local var item parent name
-	local -i skip=0 exported=0
+	local var item skip parent name
+	local -i exported=0
 	local -a val=() flags=()
 
 	# Usage:
 	#
-	# eval std::inherit -ex MYVAR 0
+	# eval std::inherit [-ex] [--] VARIABLE 0
 	#
-	# Explicitly states that the current function will make use of global
-	# variable MYVAR, and initialise MYVAR to contain the optional second
-	# argument if unset.
-	# The -e flag specifies that MYVAR must be exported rather than simply
-	# set, and the -x flag specifies that MYVAR will be exported if it
-	# does not exist.
+	# Explicitly indicates that the current function will make use of
+	# global variable VARIABLE, and initialise VARIABLE to contain the
+	# optional second argument if no global value is set.
+	# The -e flag specifies that VARIABLE must be exported rather than
+	# simply set, and the -x flag specifies that VARIABLE will be exported
+	# if it does not exist.
 	# Other than -e, the valid flags are those used by declare/typeset.
 
 	for item in "${@:-}"; do
 		if [[ "${item}" == "--" ]]; then
-			skip=1
-		elif (( ! skip )) && [[ "${item}" =~ ^-[eaAilnrtux]+$|^\+[ilntux]+$ ]]; then
+			skip='skip'
+		elif [[ -z "${skip:-}" && "${item}" =~ ^-[eaAilnrtux]+$|^\+[ilntux]+$ ]]; then
 			if [[ "${item}" =~ e ]]; then
 				exported=1
 				item="${item//e}"
@@ -1732,6 +1859,13 @@ function __STDLIB_API_1_std::inherit() { # {{{
 		return 1
 	}
 
+	if ! [[ "${var}" =~ ^[a-zA-Z_]+[a-zA-Z0-9_]*$ ]]; then
+		error "${FUNCNAME[0]##*_} parameter-name '${var}' is not a valid variable-name"
+
+		std_ERRNO=$( errsymbol EARGS )
+		return 1
+	fi
+
 	if [[ -n "${FUNCNAME[0]:-}" ]]; then
 		name="${FUNCNAME[0]/__STDLIB_API_[0-9]_}"
 		[[ -n "${name:-}" ]] || {
@@ -1740,7 +1874,7 @@ function __STDLIB_API_1_std::inherit() { # {{{
 		}
 
 		parent="${FUNCNAME[1]:-}"
-		[[ "${parent:-}" == "${name:-}" ]] && parent="${FUNCNAME[2]:-}"
+		[[ "${parent:-}" == "${name}" ]] && parent="${FUNCNAME[2]:-}"
 	fi
 	if [[ -z "${parent:-}" ]]; then
 		output >&2 "${SHELL:-bash}: ${name:-std::inherit}: can only be used in a function"
@@ -1764,7 +1898,110 @@ function __STDLIB_API_1_std::inherit() { # {{{
 
 	std_ERRNO=0
 	return 0
-} # inherit # }}}
+} # __STDLIB_API_1_std::inherit # }}}
+
+function __STDLIB_API_2_std::inherit() { # {{{
+	local item skip parent name value
+	local -i shouldexport=0 rc=0
+	local -a var=() flags=()
+	local -A val=()
+
+	# Usage:
+	#
+	# eval std::inherit [-ex] [--] VARIABLE=VALUE [VAR2=VAL2 ...]
+	#
+	# Explicitly indicates that the current function will make use of
+	# global variable VARIABLE, and initialise VARIABLE to contain the
+	# optional second argument if no global value is set.
+	# The -e flag specifies that VARIABLE must be exported rather than
+	# simply set, and the -x flag specifies that VARIABLE will be exported
+	# if it does not exist.
+	# Other than -e, the valid flags are those used by declare/typeset.
+
+	std_ERRNO=0
+
+	for item in "${@:-}"; do
+		if [[ "${item}" == "--" ]]; then
+			skip='skip'
+		elif [[ -z "${skip:-}" && "${item}" =~ ^-[eaAilnrtux]+$|^\+[ilntux]+$ ]]; then
+			if [[ "${item}" =~ e ]]; then
+				shouldexport=1
+				item="${item//e}"
+			fi
+			flags+=( "${item}" )
+		else
+			if [[ "${item}" =~ ^= ]]; then
+				error "${FUNCNAME[0]##*_} parameter '${item}' is not a valid variable name"
+
+				std_ERRNO=$( errsymbol EARGS )
+				rc=1
+			fi
+
+			name="$( cut -d'=' -f 1 <<<"${item}" )"
+			[[ "${item}" =~ = ]] && value="$( cut -d'=' -f 2- <<<"${item}" )"
+
+			if ! [[ "${name}" =~ ^[a-zA-Z_]+[a-zA-Z0-9_]*$ ]]; then
+				error "${FUNCNAME[0]##*_} parameter '${name}' is not a valid variable name"
+
+				std_ERRNO=$( errsymbol EARGS )
+				rc=1
+			fi
+
+			if grep -q " ${name} " <<<" ${var[*]:-} "; then # ` # <- Ubuntu syntax highlight fail
+				error "${FUNCNAME[0]##*_} parameter '${name}' is specified multiple times"
+
+				std_ERRNO=$( errsymbol EARGS )
+				rc=1
+			else
+				var+=( "${name}" )
+				if [[ -n "${value:-}" ]]; then
+					val[${name}]="${value}"
+				fi
+			fi
+		fi
+	done
+
+	[[ -n "${#var[@]:-}" ]] || {
+		std_ERRNO=$( errsymbol EARGS )
+		return 1
+	}
+
+	if [[ -n "${FUNCNAME[0]:-}" ]]; then
+		name="${FUNCNAME[0]/__STDLIB_API_[0-9]_}"
+		[[ -n "${name:-}" ]] || {
+			std_ERRNO=$( errsymbol EENV )
+			return 1
+		}
+
+		parent="${FUNCNAME[1]:-}"
+		[[ "${parent:-}" == "${name}" ]] && parent="${FUNCNAME[2]:-}"
+	fi
+	if [[ -z "${parent:-}" ]]; then
+		output >&2 "${SHELL:-bash}: ${name:-std::inherit}: can only be used in a function"
+
+		std_ERRNO=$( errsymbol ESYNTAX )
+		return 1
+	fi
+
+	for name in "${var[@]}"; do
+		if (( shouldexport )) && env | grep -q "^${name}="; then
+			:
+		elif (( ! shouldexport )) && [[ -n "${!name:-}" ]]; then
+			:
+		else
+			value="${val[${name}]:-}"
+			if [[ -n "${value:-}" ]]; then
+				respond "declare ${flags[*]:-} ${skip:+--} ${name}=$( declare -p "value" | cut -d'=' -f 2- )"
+				(( shouldexport )) && respond "export ${name}"
+			else
+				std_ERRNO=$( errsymbol ENOTFOUND )
+				rc=1
+			fi
+		fi
+	done
+
+	return ${rc}
+} # __STDLIB_API_2_std::inherit # }}}
 
 
 ###############################################################################
@@ -1774,12 +2011,14 @@ function __STDLIB_API_1_std::inherit() { # {{{
 ###############################################################################
 
 function __STDLIB_API_1_std::define() { # {{{
+	# This is not the same variable previously declared to be an array...
+	# shellcheck disable=SC2178
 	local var="${1:-}" ; shift
 
 	# Usage:
 	#
-	# std::define MYVAR <<'EOF'
-	# heredoc content to be read into $MYVAR without using 'cat'
+	# std::define VARIABLE <<'EOF'
+	# heredoc content to be read into $VARIABLE without using 'cat'
 	# You can 'quote ""things how you like...
 	# ... $( and this won't be executed )!
 	# EOF
@@ -1789,6 +2028,8 @@ function __STDLIB_API_1_std::define() { # {{{
 		return 1
 	}
 
+	# This is not the same variable previously declared to be an array...
+	# shellcheck disable=SC2128
 	IFS=$'\n' read -r -d '' "${var}"
 
 	std_ERRNO=0
@@ -1844,7 +2085,7 @@ function __STDLIB_API_1_std::vcmp() { # {{{
 		return 1
 	}
 
-	if ! (( 3 == ${#@} )); then
+	if ! (( 3 == ${#} )); then
 		std_ERRNO=$( errsymbol EARGS )
 		return 1
 	fi
@@ -1917,63 +2158,42 @@ function __STDLIB_API_1_std::vcmp() { # {{{
 ###############################################################################
 
 function __STDLIB_API_1_std::requires() { # {{{
-	local files item location
-	local -i canexit=1 quiet=1 n m rc=0
+	local item location
+	local -i shouldexit=1 quiet=1 path=0 rc=0
+	local -a files=()
 
-	for n in $( seq 1 ${#@} ); do
-		(( n > ${#@} )) && break
-
-		item="$( eval echo "\${${n}}" )"
+	for item in "${@:-}"; do
 		if [[ "${item:-}" =~ ^(--)?(no-?exit|no-?abort|keep|keep-?going)$ ]]; then
-			canexit=0
-			rc=1
-		elif [[ "${item:-}" =~ ^(--)?(no-?quiet|path)$ ]]; then
+			shouldexit=0
+		elif [[ "${item:-}" =~ ^(--)?no-?quiet$ ]]; then
 			quiet=0
-			rc=1
-		fi
-		if (( rc )); then
-			if (( n > 1 )); then
-				for m in $( seq 1 $(( n - 1 )) ); do
-					files="$( eval echo "${files:-} \${${m}}" )"
-				done
-			fi
-			if (( n < ${#@} )); then
-				for m in $( seq $(( n + 1 )) ${#@} ); do
-					files="$( eval echo "${files:-} \${${m}}" )"
-				done
-			fi
-			rc=0
-			eval "set -- '${files:-}'"
+		elif [[ "${item:-}" =~ ^(--)?path$ ]]; then
+			path=1
+		elif [[ "${item:-}" =~ ^-- ]]; then
+			debug "Unknown argument '${item}' to ${FUNCNAME[0]##*_}"
+		elif [[ -n "${item:-}" ]]; then
+			files+=( "${item}" )
 		fi
 	done
 
-	# If we're not outputting a path, we can only return an exit status for
-	# one binary at once...
-	if (( !( quiet ) && ${#@} > 1 )); then
-		(( canexit )) && die "Cannot return paths for multiple binaries"
+	std_ERRNO=0
+
+	if ! (( ${#files[@]} )); then
 		std_ERRNO=$( errsymbol EARGS )
 		return 1
 	fi
 
-	files=( "${@:-}" )
-
-	(( ${#files[@]} )) || {
-		std_ERRNO=$( errsymbol EARGS )
-		return 1
-	}
-
-	std_ERRNO=0
-
-	for item in "${files[@]}"; do
-		location=$( type -pf "${item}" 2>/dev/null ) || {
-			error "Cannot locate required '${item}' binary"
+	for item in "${files[@]:-}"; do
+		if location="$( type -pf "${item:-}" 2>/dev/null )"; then
+			(( path )) && respond "${location:-}"
+		else
+			(( quiet )) || error "Cannot locate required '${item:-}' binary"
 			std_ERRNO=$( errsymbol ENOTFOUND )
 			rc=1
-		}
-		(( quiet )) || respond "${location:-}"
+		fi
 	done
 
-	(( canexit & rc )) && exit 1
+	(( shouldexit )) && (( rc )) && __STDLIB_API_1_std::cleanup 1
 
 	# std_ERRNO set above
 	return ${rc}
@@ -2370,15 +2590,6 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 		return 0
 	fi
 
-	#(( STDLIB_HAVE_BASH_4 )) || {
-	#	(( std_DEBUG )) && error "${FUNCNAME[0]##*_} requires bash-4 associative arrays"
-	#	std_PARSEARGS_parsed=0
-	#	respond "std_PARSEARGS_parsed=${std_PARSEARGS_parsed:-0}"
-	#
-	#	std_ERRNO=$( errsymbol ENOEXE )
-	#	return 1
-	#}
-
 	# It would sometimes be incredibly useful to be able to pass unordered
 	# or optional parameters to a shell function, without the overhead of
 	# having to run getopt and parse the output for every invocation.
@@ -2427,10 +2638,9 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 	# by a double-hyphen!
 	#
 
-	#local -A std_PARSEARGS_result
 	local -a std_PARSEARGS_results=()
 
-	if echo "${*:-}" | grep -qw -- '--'; then
+	if grep -qw -- '--' <<<"${*:-}"; then # ` # <- Ubuntu syntax highlight fail
 		while [[ -n "${1:-}" ]]; do
 			std_PARSEARGS_current="${1}" ; shift
 			case "${std_PARSEARGS_current}" in
@@ -2504,7 +2714,7 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 				return 1
 			else
 				declare -p "${std_PARSEARGS_arg}" >/dev/null 2>&1 || declare -a "${std_PARSEARGS_arg}"
-				if ! grep -qm 1 -- " ${std_PARSEARGS_arg} " <<<" ${std_PARSEARGS_results[*]:-} "; then # ` # <- Ubuntu syntax highlight fail
+				if ! grep -Fqm 1 -- " ${std_PARSEARGS_arg} " <<<" ${std_PARSEARGS_results[*]:-} "; then # ` # <- Ubuntu syntax highlight fail
 					std_PARSEARGS_results+=( "${std_PARSEARGS_arg}" )
 				fi
 			fi
@@ -2514,15 +2724,9 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 				continue
 			fi
 
-			#local std_PARSEARGS_existing="${std_PARSEARGS_result[${std_PARSEARGS_arg}]:-}"
-			#if [[ -n "${std_PARSEARGS_existing:-}" && -n "${std_PARSEARGS_existing// }" ]]; then
-			#	result[${std_PARSEARGS_arg}]="${std_PARSEARGS_existing} ${std_PARSEARGS_current}"
-			#else
-			#	result[${std_PARSEARGS_arg}]="${std_PARSEARGS_current}"
-			#fi
 			eval "${std_PARSEARGS_arg}+=( '${std_PARSEARGS_current}' )"
 			if [[ "${std_PARSEARGS_arg}" == "${std_PARSEARGS_unassigned_var}" ]]; then
-				if ! grep -qm 1 -- " ${std_PARSEARGS_arg} " <<<" ${std_PARSEARGS_results[*]:-} "; then # ` # <- Ubuntu syntax highlight fail
+				if ! grep -Fqm 1 -- " ${std_PARSEARGS_arg} " <<<" ${std_PARSEARGS_results[*]:-} "; then # ` # <- Ubuntu syntax highlight fail
 					std_PARSEARGS_results+=( "${std_PARSEARGS_arg}" )
 				fi
 			fi
@@ -2536,14 +2740,6 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 	done
 
 	if (( ! std_PARSEARGS_rc )); then
-		#for std_PARSEARGS_arg in "${!std_PARSEARGS_result[@]}"; do
-		#	std_PARSEARGS_current="${std_PARSEARGS_result[${std_PARSEARGS_arg}]}"
-		#	if [[ "${std_PARSEARGS_current}" =~ \  ]]; then
-		#		respond "${std_PARSEARGS_arg// }='${std_PARSEARGS_current:-}'"
-		#	else
-		#		respond "${std_PARSEARGS_arg// }=${std_PARSEARGS_current:-}"
-		#	fi
-		#done
 		for std_PARSEARGS_arg in "${std_PARSEARGS_results[@]:-}"; do
 			if [[ -n "${std_PARSEARGS_arg:-}" ]]; then
 				if declare -p "${std_PARSEARGS_arg}" >/dev/null 2>&1; then
@@ -2698,7 +2894,7 @@ function __STDLIB_API_1_std::configure() { # {{{
 #function lock() {
 #	local lockfile="${1:-/var/lock/${NAME}.lock}"
 #
-#	mkdir -p "$( dirname "$lockfile" )" 2>/dev/null || exit 1
+#	mkdir -p "$( dirname "$lockfile" )" 2>/dev/null || std::cleanup 1
 #
 #	if ( set -o noclobber ; echo "$$" >"$lockfile" ) 2>/dev/null; then
 #		std_ERRNO=0
@@ -2774,7 +2970,7 @@ function __STDLIB_API_1_std::configure() { # {{{
 #			1 == output && output = 2 ;
 #		 } ;
 #	"
-#done | grep -B 1 "${canary}" | grep "^${prefix}" | while read -r stdlib_alias; do
+#done | grep -FB 1 "${canary}" | grep "^${prefix}" | while read -r stdlib_alias; do
 #	unalias $stdlib_alias 2>/dev/null
 #done
 
@@ -2801,11 +2997,15 @@ __STDLIB_oneshot_syntax_check || exit 1
 unset __STDLIB_oneshot_syntax_check
 
 __STDLIB_oneshot_errno_init
-unset __STDLIB_oneshot_errno_init
+#unset __STDLIB_oneshot_errno_init
 
-declare -i __STDLIB_API="${STDLIB_API:-1}"
+# Prior to APIv2 (where is was first used), the control-variable to speficy the
+# API to provide was STDLIB_API rather than STDLIB_WANT_API - so still allow
+# this to be used, just in case...
+declare -i __STDLIB_LATEST_API="${std_RELEASE%%.*}"
+declare -i __STDLIB_API="${STDLIB_WANT_API:-${STDLIB_API:-${__STDLIB_LATEST_API:-1}}}"
 case "${__STDLIB_API}" in
-	1)
+	1|2)
 		:
 		;;
 	*)
@@ -2877,7 +3077,6 @@ while read -r fapi; do
 	# Export all API versions, so that explicit implmentations are still
 	# available...
 	#
-	#if echo "${fapi}" | grep -q "^__STDLIB_API_"; then
 	if grep -q "^__STDLIB_API_" <<<"${fapi}"; then # ` # <- Ubuntu syntax highlight fail
 
 		# Ensure that function is still available...
@@ -2889,21 +3088,30 @@ while read -r fapi; do
 			# shellcheck disable=SC2163
 			export -f "${fapi}"
 
-			if echo "${fapi}" | grep -q "^__STDLIB_API_${__STDLIB_API}_"; then
-				if fname="$( ${sed} 's/^__STDLIB_API_[0-9]+_//' <<<"${fapi}" )"; then
-					__STDLIB_functionlist+=( "${fname}" )
-					eval "function ${fname}() { ${fapi} \"\${@:-}\"; }"
+			declare -i api
+			# shellcheck disable=SC2086
+			for api in $( seq ${__STDLIB_API} -1 1 ); do
+				if grep -q "^__STDLIB_API_${api}_" <<<"${fapi}"; then
+					if fname="$( ${sed} 's/^__STDLIB_API_[0-9]+_//' <<<"${fapi}" )"; then
+						__STDLIB_functionlist+=( "${fname}" )
+						eval "function ${fname}() { ${fapi} \"\${@:-}\"; }"
 
-					# Make functions available to child shells...
-					#
-					# shellcheck disable=SC2163
-					export -f "${fname}"
+						# Make functions available to child shells...
+						#
+						# shellcheck disable=SC2163
+						export -f "${fname}"
 
-					# Clear the variable, not the function definition...
-					#
-					unset fname
+						# Clear the variable, not the function definition...
+						#
+						unset fname
+
+						# Don't create any further accessors for this name...
+						#
+						break
+					fi
 				fi
-			fi
+			done
+			unset api
 		fi
 	fi
 
@@ -2932,6 +3140,13 @@ done < <(
 )
 unset fapi sed s
 
+# We also need to export the internal (and increasingly inaccurately
+# named ;) 'oneshot' functions which populated shared associative
+# arrays so that they can be re-invoked by child shells whose parent
+# also includes stdlib...
+export -f __STDLIB_oneshot_errno_init
+export -f __STDLIB_oneshot_colours_init
+
 # Also export non-API-versioned functions...
 #
 # shellcheck disable=SC2034
@@ -2942,7 +3157,7 @@ typeset -gax __STDLIB_functionlist
 typeset -gix STDLIB_HAVE_STDLIB=1
 
 __STDLIB_oneshot_colours_init
-unset __STDLIB_oneshot_colours_init
+#unset __STDLIB_oneshot_colours_init
 
 if [[ -r "${std_LIBPATH}"/memcached.sh ]]; then
 	if [[ -n "${STDLIB_WANT_MEMCACHED:-}" ]] && ! (( STDLIB_HAVE_MEMCACHED )); then
@@ -2954,7 +3169,13 @@ fi
 
 # }}}
 
-fi # [[ "$( type -t std::sentinel 2>&1 )" != "function" ]] # Line 64
+fi # [[ "$( type -t std::sentinel 2>&1 )" != "function" ]] # Line 99
+
+[[ -n "${STDLIB_REUSE_TEMPFILES:-}" ]] &&
+	warn "Internal option 'STDLIB_REUSE_TEMPFILES' is set but is" \
+	     "potentially unsafe"
+
+true
 
 
 ###############################################################################
