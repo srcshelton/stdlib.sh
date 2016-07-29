@@ -58,135 +58,6 @@ done
 #       use.  However, functions are free to interrogate the API version and
 #       may still perform version-specific tests.
 #
-function http::test() { # {{{
-	local -i ic=0 rc=0 code=0 result=0
-
-	(( STDLIB_HAVE_BASH_4 )) || {
-		# Defined in stdlib.sh
-		# shellcheck disable=SC2154
-
-		(( std_DEBUG )) && error "${FUNCNAME[0]##*_} requires bash-4 associative arrays"
-
-		std_ERRNO=$( errsymbol ENOEXE )
-		return 1
-	}
-
-	local -A codes
-	# 1xx Informational
-	codes[100]='Continue'
-	codes[101]='Switching Protocols'
-	# Non-RFC2616 Status Codes
-	codes[102]='Processing' # RFC2518; WebDAV
-	# 2xx Successful
-	codes[200]='OK'
-	codes[201]='Created'
-	codes[202]='Accepted'
-	codes[203]='Non-Authoritative Information' # Since HTTP/1.1
-	codes[204]='No Content'
-	codes[205]='Reset Content'
-	codes[206]='Partial Content'
-	# Non-RFC2616 Status Codes
-	codes[207]='Multi-Status' # RFC4918; WebDAV
-	codes[208]='Already Reported' # RFC5842; WebDAV
-	codes[226]='IM Used' # RFC3229; WebDAV
-	# 3xx Redirection
-	codes[300]='Multiple Choices'
-	codes[301]='Moved Permanently'
-	codes[302]='Found'
-	codes[303]='See Other' # Since HTTP/1.1
-	codes[304]='Not Modified'
-	codes[305]='Use Proxy' # Since HTTP/1.1
-	codes[306]='(Switch Proxy - Unused)'
-	codes[307]='Temporary Redirect'
-	# Non-RFC2616 Status Codes
-	codes[308]='Permanent Redirect' # RFC7238; Experimental
-	# 4xx Client Error
-	codes[400]='Bad Request'
-	codes[401]='Unauthorized'
-	codes[402]='Payment Required'
-	codes[403]='Forbidden'
-	codes[404]='Not Found'
-	codes[405]='Method Not Allowed'
-	codes[406]='Not Acceptable'
-	codes[407]='Proxy Authentication Required'
-	codes[408]='Request Timeout'
-	codes[409]='Conflict'
-	codes[410]='Gone'
-	codes[411]='Length Required'
-	codes[412]='Precondition Failed'
-	codes[413]='Request Entity Too Large'
-	codes[414]='Request-URI Too Long'
-	codes[415]='Unsupported Media Type'
-	codes[416]='Requested Range Not Satisfiable'
-	codes[417]='Expectation Failed'
-	# Non-RFC2616 Status Codes
-	codes[418]="I'm a teapot" # RFC2324
-	codes[419]='Authentication Timeout' # *Not* in RFC2616
-	codes[420]='Method Failure/Enhance Your Calm' # Spring; Deprecated/Twitter API v1.0
-	codes[421]='Expectation Failed'
-	codes[422]='Unprocessable Entity' # RFC4918; WebDAV
-	codes[423]='Locked' # RFC4918; WebDAV
-	codes[424]='Failed Dependency' # RFC4918; WebDAV
-	codes[426]='Upgrade Required'
-	codes[428]='Precondition Required' # RFC6585
-	codes[429]='Too Many Requests' # RFC6585
-	codes[431]='Request Header Fields Too Large' # RFC6585
-	codes[440]='Login Timeout' # Microsoft
-	codes[444]='No Response' # nginx
-	codes[449]='Retry With' # Microsoft
-	codes[450]='Blocked by Windows Parental Controls' # Microsoft
-	codes[451]='Unavailable For Legal Reasons/Redirect' # Draft/Microsoft
-	codes[494]='Request Header Too Large' # nginx
-	codes[495]='Cert Error' # nginx
-	codes[496]='No Cert' # nginx
-	codes[497]='HTTP to HTTPS' # nginx
-	codes[498]='Token expired/invalid' # ersi
-	codes[499]='Client Closed Request/Token Required' # nginx/ersi
-	# 5xx Server Error
-	codes[500]='Internal Server Error'
-	codes[501]='Not Implemented'
-	codes[502]='Bad Gateway'
-	codes[503]='Service Unavailable'
-	codes[504]='Gateway Timeout'
-	codes[505]='HTTP Version Not Supported'
-	# Non-RFC2616 Status Codes
-	codes[506]='Variant Also Negotiates' # RFC2295
-	codes[507]='Insufficient Storage' # RFC4918; WebDAV
-	codes[508]='Loop Detected' # RFC5842; WebDAV
-	codes[509]='Bandwidth Limit Exceeded' # Apache
-	codes[510]='Not Extended' # RFC2774
-	codes[511]='Network Authentication Required' # RFC6585
-	codes[520]='Origin Error' # CloudFlare
-	codes[521]='Web server is down' # CloudFlare
-	codes[522]='Connection timed out' # CloudFlare
-	codes[523]='Proxy Declined Request' # CloudFlare
-	codes[524]='A timeout occurred' # CloudFlare
-	codes[598]='Network read timeout error' # Microsoft
-	codes[599]='Network connect timeout error' # Microsoft
-
-	output "Testing HTTP-to-shell response-code mappings\n"
-	output "N.B.: non-RFC2616 status codes are expected failures\n"
-
-	std_ERRNO=0
-
-	# 'ic' and 'code' are numeric, and therefore not subject to word-splitting
-	# shellcheck disable=SC2086
-	for code in $( for ic in "${!codes[@]}"; do echo ${ic}; done | sort -n ); do
-		std::http::squash ${code} 2>/dev/null ; ic=${?}
-		rc=$( std::http::expand ${ic} )
-		if (( code == rc )); then
-			info "${code} '${codes[${code}]}' -> ${ic} -> ${rc} : Okay"
-		else
-			warn "${code} '${codes[${code}]}' -> ${ic} -> ${rc} : FAIL"
-			result=1
-			std_ERRNO=$( errsymbol EERROR )
-		fi
-	done
-
-	# Don't stomp std_ERRNO
-	return ${result}
-} # http::test # }}}
-
 function output::test() { # {{{
 	local -i debug=${std_DEBUG:-0}
 
@@ -278,8 +149,196 @@ function output::test() { # {{{
 	return 0
 } # output::test # }}}
 
+function push::test() { # {{{
+	local -i rc=0 result=0
+	# Test-cases from https://github.com/vaeth/push/blob/71794c14a709d4ef2816d76db89c2b7f41a0b650/README
+
+	local response expected
+	local -a fargs=( "${@:-}" )
+
+	# Example 1 # {{{
+	local foo
+	response="$(
+		set -e
+		std::push -c foo 'data with special symbols like ()"\' "'another arg'"
+		std::push foo further args
+		eval "printf '%s\\n' ${foo}"
+	)" 2>/dev/null
+	rc=${?}
+
+	if (( rc )); then
+		error "std::push Example 1 failed: ${rc}"
+		result=1
+	else
+		std::define expected <<'EOF'
+data with special symbols like ()"\
+'another arg'
+further
+args
+EOF
+		if [[ "${response:-}" == "${expected}" ]]; then
+			info "std::push Example 1: okay"
+		else
+			error "std::push Example 1: failed"
+			info "Expected:"
+			output "${expected}"
+			info "Received:"
+			output "${response}"
+			result=1
+		fi
+	fi
+	unset foo
+	# }}}
+
+	# Example 2 # {{{
+	local args
+	set -- a1 a2 a3 a4 removeme
+	response="$(
+		set -e
+		std::push -c args || true # For 'set -e'
+		while [ ${#} -gt 1 ]
+		do
+			std::push args "${1}"
+			shift
+		done
+		eval "set -- ${args}"
+		echo "${*}"
+	)" 2>/dev/null
+	rc=${?}
+	set -- "${fargs[@]}"
+
+	if (( rc )); then
+		error "std::push Example 2 failed: ${rc}"
+		result=1
+	else
+		std::define expected <<'EOF'
+a1 a2 a3 a4
+EOF
+		if [[ "${response:-}" == "${expected}" ]]; then
+			info "std::push Example 2: okay"
+		else
+			error "std::push Example 2: failed"
+			info "Expected:"
+			output "${expected}"
+			info "Received:"
+			output "${response}"
+			result=1
+		fi
+	fi
+	unset args
+	# }}}
+
+	# Example 3 # {{{
+	local files
+	set -- a1 " a2 " "'a3'" '"a4"' '<a5' '>a6'
+	response="$(
+		set -e
+		std::push -c files "${@}" && echo "su -c \"cat -- ${files}\""
+	)" 2>/dev/null
+	rc=${?}
+	set -- "${fargs[@]}"
+
+	if (( rc )); then
+		error "std::push Example 3 failed: ${rc}"
+		result=1
+	else
+		std::define expected <<'EOF'
+su -c "cat -- a1 ' a2 ' \'a3\' '"a4"' '<a5' '>a6'"
+EOF
+		if [[ "${response:-}" == "${expected}" ]]; then
+			info "std::push Example 3: okay"
+		else
+			error "std::push Example 3: failed"
+			info "Expected:"
+			output "${expected}"
+			info "Received:"
+			output "${response}"
+			result=1
+		fi
+	fi
+	unset files
+	# }}}
+
+	# Example 4 # {{{
+	local v
+	set -- source~1 'source 2' "source '3'"
+	response="$(
+		set -e
+		std::push -c v cp -- "${@}" \~dest
+		printf '%s\n' "${v}"
+	)" 2>/dev/null
+	rc=${?}
+	set -- "${fargs[@]}"
+
+	if (( rc )); then
+		error "std::push Example 4 failed: ${rc}"
+		result=1
+	else
+		std::define expected <<'EOF'
+cp -- source~1 'source 2' 'source '\'3\' '~dest'
+EOF
+		if [[ "${response:-}" == "${expected}" ]]; then
+			info "std::push Example 4: okay"
+		else
+			error "std::push Example 4: failed"
+			info "Expected:"
+			output "${expected}"
+			info "Received:"
+			output "${response}"
+			result=1
+		fi
+	fi
+	unset v
+	# }}}
+
+	# Example 5 # {{{
+	local data
+	response="$(
+		set -e
+
+		function donothing() {
+			:
+		}
+		function dosomething() {
+			std::push data "item"
+		}
+		std::push -c data || true # For 'set -e'
+		donothing
+		std::push data || echo 'nothing was pushed to $data in donothing'
+		dosomething
+		std::push data || echo 'nothing was pushed to $data in dosomething'
+	)" 2>/dev/null
+	rc=${?}
+	set -- "${fargs[@]}"
+
+	if (( rc )); then
+		error "std::push Example 5 failed: ${rc}"
+		result=1
+	else
+		std::define expected <<'EOF'
+nothing was pushed to $data in donothing
+EOF
+		if [[ "${response:-}" == "${expected}" ]]; then
+			info "std::push Example 5: okay"
+		else
+			error "std::push Example 5: failed"
+			info "Expected:"
+			output "${expected}"
+			info "Received:"
+			output "${response}"
+			result=1
+		fi
+	fi
+	unset data
+	# }}}
+
+	# Don't stomp std_ERRNO
+	return ${result}
+} # push::test # }}}
+
 function parseargs::test() { # {{{
-	local std_PARSEARGS_parsed=0 item1 item2 item3 unknown
+	local item1 item2 item3 unknown
+	local -i std_PARSEARGS_parsed=0 result=0
 	local -a args
 
 	(
@@ -471,7 +530,139 @@ function parseargs::test() { # {{{
 			fi
 		fi
 	)
+
+	# Don't stomp std_ERRNO
+	return ${result}
 } # parseargs::test # }}}
+
+function http::test() { # {{{
+	local -i ic=0 rc=0 code=0 result=0
+
+	(( STDLIB_HAVE_BASH_4 )) || {
+		# Defined in stdlib.sh
+		# shellcheck disable=SC2154
+
+		(( std_DEBUG )) && error "${FUNCNAME[0]##*_} requires bash-4 associative arrays"
+
+		std_ERRNO=$( errsymbol ENOEXE )
+		return 1
+	}
+
+	local -A codes
+	# 1xx Informational
+	codes[100]='Continue'
+	codes[101]='Switching Protocols'
+	# Non-RFC2616 Status Codes
+	codes[102]='Processing' # RFC2518; WebDAV
+	# 2xx Successful
+	codes[200]='OK'
+	codes[201]='Created'
+	codes[202]='Accepted'
+	codes[203]='Non-Authoritative Information' # Since HTTP/1.1
+	codes[204]='No Content'
+	codes[205]='Reset Content'
+	codes[206]='Partial Content'
+	# Non-RFC2616 Status Codes
+	codes[207]='Multi-Status' # RFC4918; WebDAV
+	codes[208]='Already Reported' # RFC5842; WebDAV
+	codes[226]='IM Used' # RFC3229; WebDAV
+	# 3xx Redirection
+	codes[300]='Multiple Choices'
+	codes[301]='Moved Permanently'
+	codes[302]='Found'
+	codes[303]='See Other' # Since HTTP/1.1
+	codes[304]='Not Modified'
+	codes[305]='Use Proxy' # Since HTTP/1.1
+	codes[306]='(Switch Proxy - Unused)'
+	codes[307]='Temporary Redirect'
+	# Non-RFC2616 Status Codes
+	codes[308]='Permanent Redirect' # RFC7238; Experimental
+	# 4xx Client Error
+	codes[400]='Bad Request'
+	codes[401]='Unauthorized'
+	codes[402]='Payment Required'
+	codes[403]='Forbidden'
+	codes[404]='Not Found'
+	codes[405]='Method Not Allowed'
+	codes[406]='Not Acceptable'
+	codes[407]='Proxy Authentication Required'
+	codes[408]='Request Timeout'
+	codes[409]='Conflict'
+	codes[410]='Gone'
+	codes[411]='Length Required'
+	codes[412]='Precondition Failed'
+	codes[413]='Request Entity Too Large'
+	codes[414]='Request-URI Too Long'
+	codes[415]='Unsupported Media Type'
+	codes[416]='Requested Range Not Satisfiable'
+	codes[417]='Expectation Failed'
+	# Non-RFC2616 Status Codes
+	codes[418]="I'm a teapot" # RFC2324
+	codes[419]='Authentication Timeout' # *Not* in RFC2616
+	codes[420]='Method Failure/Enhance Your Calm' # Spring; Deprecated/Twitter API v1.0
+	codes[421]='Expectation Failed'
+	codes[422]='Unprocessable Entity' # RFC4918; WebDAV
+	codes[423]='Locked' # RFC4918; WebDAV
+	codes[424]='Failed Dependency' # RFC4918; WebDAV
+	codes[426]='Upgrade Required'
+	codes[428]='Precondition Required' # RFC6585
+	codes[429]='Too Many Requests' # RFC6585
+	codes[431]='Request Header Fields Too Large' # RFC6585
+	codes[440]='Login Timeout' # Microsoft
+	codes[444]='No Response' # nginx
+	codes[449]='Retry With' # Microsoft
+	codes[450]='Blocked by Windows Parental Controls' # Microsoft
+	codes[451]='Unavailable For Legal Reasons/Redirect' # Draft/Microsoft
+	codes[494]='Request Header Too Large' # nginx
+	codes[495]='Cert Error' # nginx
+	codes[496]='No Cert' # nginx
+	codes[497]='HTTP to HTTPS' # nginx
+	codes[498]='Token expired/invalid' # ersi
+	codes[499]='Client Closed Request/Token Required' # nginx/ersi
+	# 5xx Server Error
+	codes[500]='Internal Server Error'
+	codes[501]='Not Implemented'
+	codes[502]='Bad Gateway'
+	codes[503]='Service Unavailable'
+	codes[504]='Gateway Timeout'
+	codes[505]='HTTP Version Not Supported'
+	# Non-RFC2616 Status Codes
+	codes[506]='Variant Also Negotiates' # RFC2295
+	codes[507]='Insufficient Storage' # RFC4918; WebDAV
+	codes[508]='Loop Detected' # RFC5842; WebDAV
+	codes[509]='Bandwidth Limit Exceeded' # Apache
+	codes[510]='Not Extended' # RFC2774
+	codes[511]='Network Authentication Required' # RFC6585
+	codes[520]='Origin Error' # CloudFlare
+	codes[521]='Web server is down' # CloudFlare
+	codes[522]='Connection timed out' # CloudFlare
+	codes[523]='Proxy Declined Request' # CloudFlare
+	codes[524]='A timeout occurred' # CloudFlare
+	codes[598]='Network read timeout error' # Microsoft
+	codes[599]='Network connect timeout error' # Microsoft
+
+	output "Testing HTTP-to-shell response-code mappings\n"
+	output "N.B.: non-RFC2616 status codes are expected failures\n"
+
+	std_ERRNO=0
+
+	# 'ic' and 'code' are numeric, and therefore not subject to word-splitting
+	# shellcheck disable=SC2086
+	for code in $( for ic in "${!codes[@]}"; do echo ${ic}; done | sort -n ); do
+		std::http::squash ${code} 2>/dev/null ; ic=${?}
+		rc=$( std::http::expand ${ic} )
+		if (( code == rc )); then
+			info "${code} '${codes[${code}]}' -> ${ic} -> ${rc} : Okay"
+		else
+			warn "${code} '${codes[${code}]}' -> ${ic} -> ${rc} : FAIL"
+			result=1
+			std_ERRNO=$( errsymbol EERROR )
+		fi
+	done
+
+	# Don't stomp std_ERRNO
+	return ${result}
+} # http::test # }}}
 
 # }}}
 
@@ -483,16 +674,21 @@ function main() {
 		std::usage
 	fi
 
-	if grep -Eq ' (parseargs|all) ' <<<" ${wanted} "; then
-		parseargs::test "${@:-}" ; rc+=${?}
-		output
-	fi
-
 	if grep -Eq ' (colour|all) ' <<<" ${wanted} "; then
 		std_DEBUG=2
 		output::test "${@:-}" ; rc+=${?}
 		output
 		std_DEBUG=${debug}
+	fi
+
+	if grep -Eq ' (push|all) ' <<<" ${wanted} "; then
+		push::test "${@:-}" ; rc+=${?}
+		output
+	fi
+
+	if grep -Eq ' (parseargs|all) ' <<<" ${wanted} "; then
+		parseargs::test "${@:-}" ; rc+=${?}
+		output
 	fi
 
 	if grep -Eq ' (http|all) ' <<<" ${wanted} "; then
