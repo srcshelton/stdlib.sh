@@ -58,482 +58,233 @@ done
 #       use.  However, functions are free to interrogate the API version and
 #       may still perform version-specific tests.
 #
-function output::test() { # {{{
-	local -i debug=${std_DEBUG:-0}
-
-	output "Colourisation test:\n"
-
-	std::colour "Message"
-	std::colour "Multi-word message"
-	output
-	std::colour "WARN: Warning"
-	std::colour "warning message"
-	std::colour "info information"
-	std::colour "information: info"
-	std::colour "NOTICE: Notice"
-	std::colour "note: Notice"
-	std::colour "debug debug"
-	std::colour "warn warn"
-	std::colour "warning warning"
-	std::colour "error error"
-	output
-	std::colour Red "Text in red specified inline"
-	output
-	std::colour -colour black "Black"
-	std::colour -colour red "Red"
-	std::colour -colour green "Green"
-	std::colour -colour yellow "Yellow"
-	std::colour -colour blue "Blue"
-	std::colour -colour magenta "Magenta"
-	std::colour -colour cyan "Cyan"
-	std::colour -colour white "White"
-	std::colour -colour $(( ( 1 << 16 ) + 0 )) "Bright Black"
-	std::colour -colour $(( ( 1 << 16 ) + 1 )) "Bright Red"
-	std::colour -colour $(( ( 1 << 16 ) + 2 )) "Bright Green"
-	std::colour -colour $(( ( 1 << 16 ) + 3 )) "Bright Yellow"
-	std::colour -colour $(( ( 1 << 16 ) + 4 )) "Bright Blue"
-	std::colour -colour $(( ( 1 << 16 ) + 5 )) "Bright Magenta"
-	std::colour -colour $(( ( 1 << 16 ) + 6 )) "Bright Cyan"
-	std::colour -colour $(( ( 1 << 16 ) + 7 )) "Bright White"
-	std::colour -colour $(( ( 4 << 16 ) + ( 3 << 8 ) + 4 )) "Underlined blue on yellow"
-	output
-	std::colour -type debug "This is debug"
-	std::colour -type error "This is error"
-	std::colour -type exec "This is exec"
-	std::colour -type fail "This is fail"
-	std::colour -type fatal "This is fatal"
-	std::colour -type info "This is info"
-	std::colour -type note "This is note"
-	std::colour -type notice "This is notice"
-	std::colour -type okay "This is okay"
-	std::colour -type ok "This is ok"
-	std::colour -type warn "This is warn"
-	output
-	std::colour -type fatal -colour yellow "!!! Yellow text following red fatal prefix"
-	std::colour -type okay -colour magenta "!!! Magenta text following green ok prefix"
-	output
-	std::colour -colour $(( ( 1 << 16 ) + 2 )) "Bright green"
-	std::colour -colour $(( 2 )) "Dim green"
-	output
-	info "Info"
-	notice "Notice"
-	note "Note"
-	std_DEBUG=0 debug "This should not be displayed..."
-	std_DEBUG=1 debug "Debug"
-	std_DEBUG=${debug}
-	warn "Warning"
-	error "Error"
-	( die "Die" )
-
-	output "\nSpacing test:"
-	output "         11111111112"
-	output "12345678901234567890"
-	std::colour -colour white "1                   "
-	std::colour -colour white "    5               "
-	std::colour -colour white "1   5               "
-	std::colour -colour white "        9           "
-	std::colour -colour white "1       9           "
-	std::colour -colour white "    5   9           "
-	std::colour -colour white "1   5   9           "
-	std::colour -colour white "1   5   9   *       "
-	std::colour -colour white "1   5   9   *   +   "
-	echo " $( std::colour -colour white "2 4 6 8 - * + ! @ #" )x"
-	echo -n ' ' ; echo -n "$( std::colour -colour white "2 4 6 8 - * + ! @ #" )" ; echo 'x'
-	echo -n "$( std::colour -colour white "1 3 5 7 9 # @ ! + *" )" ; echo ' x'
-
-	output "\nColourisation test complete"
-
-	# Defined in stdlib.sh
-	# shellcheck disable=SC2034
-	std_ERRNO=0
-	return 0
-} # output::test # }}}
-
-function push::test() { # {{{
+function emktemp::test() { # {{{
+	local tempfile
 	local -i rc=0 result=0
-	# Test-cases from https://github.com/vaeth/push/blob/71794c14a709d4ef2816d76db89c2b7f41a0b650/README
 
-	local response expected
-	local -a fargs=( "${@:-}" )
+	local func="std::emktemp" check=""
 
-	# Example 1 # {{{
-	local foo
-	response="$(
-		set -e
-		std::push -c foo 'data with special symbols like ()"\' "'another arg'"
-		std::push foo further args
-		eval "printf '%s\\n' ${foo}"
-	)" 2>/dev/null
-	rc=${?}
+	# Test 1 # {{{
+	(
+		check="Test 1"
 
-	if (( rc )); then
-		error "std::push Example 1 failed: ${rc}"
-		result=1
-	else
-		std::define expected <<'EOF'
-data with special symbols like ()"\
-'another arg'
-further
-args
-EOF
-		if [[ "${response:-}" == "${expected}" ]]; then
-			info "std::push Example 1: okay"
+		std::emktemp tempfile
+		debug "${func} created file '${tempfile:-}' with no arguments"
+		if ! [[ -n "${tempfile:-}" ]]; then
+			error "${func} returned no file-name"
+			rc=1
 		else
-			error "std::push Example 1: failed"
-			info "Expected:"
-			output "${expected}"
-			info "Received:"
-			output "${response}"
-			result=1
+			if ! [[ -e "${tempfile}" && -f "${tempfile}" ]]; then
+				error "Temporary file '${tempfile}' does not exst"
+				rc=1
+			else
+				(
+					#export std_DEBUG=2
+					std::cleanup 0
+				)
+				rc+=${?}
+
+				if [[ -e "${tempfile}" && -f "${tempfile}" ]]; then
+					error "std::cleanup failed to remove file '${tempfile}'"
+					(( rc++ ))
+				else
+					info "${func} ${check}: okay"
+				fi
+			fi
 		fi
-	fi
-	unset foo
+
+		exit ${rc}
+	)
+	(( result += ${?} ))
 	# }}}
 
-	# Example 2 # {{{
-	local args
-	set -- a1 a2 a3 a4 removeme
-	response="$(
-		set -e
-		std::push -c args || true # For 'set -e'
-		while [ ${#} -gt 1 ]
-		do
-			std::push args "${1}"
-			shift
-		done
-		eval "set -- ${args}"
-		echo "${*}"
-	)" 2>/dev/null
-	rc=${?}
-	set -- "${fargs[@]}"
+	# Test 2 # {{{
+	(
+		check="Test 2"
 
-	if (( rc )); then
-		error "std::push Example 2 failed: ${rc}"
-		result=1
-	else
-		std::define expected <<'EOF'
-a1 a2 a3 a4
-EOF
-		if [[ "${response:-}" == "${expected}" ]]; then
-			info "std::push Example 2: okay"
+		std::emktemp tempfile "${$}"
+		debug "${func} created file '${tempfile:-}' with template '${$}'"
+		if ! [[ -n "${tempfile:-}" ]]; then
+			error "${func} returned no file-name"
+			rc=1
 		else
-			error "std::push Example 2: failed"
-			info "Expected:"
-			output "${expected}"
-			info "Received:"
-			output "${response}"
-			result=1
+			if ! [[ -e "${tempfile}" && -f "${tempfile}" ]]; then
+				error "Temporary file '${tempfile}' does not exst"
+				rc=1
+			else
+				(
+					#export std_DEBUG=2
+					std::cleanup 0
+				)
+				rc+=${?}
+
+				if [[ -e "${tempfile}" && -f "${tempfile}" ]]; then
+					error "std::cleanup failed to remove file '${tempfile}'"
+					(( rc++ ))
+				else
+					info "${func} ${check}: okay"
+				fi
+			fi
 		fi
-	fi
-	unset args
+
+		exit ${rc}
+	)
+	(( result += ${?} ))
 	# }}}
 
-	# Example 3 # {{{
-	local files
-	set -- a1 " a2 " "'a3'" '"a4"' '<a5' '>a6'
-	response="$(
-		set -e
-		std::push -c files "${@}" && echo "su -c \"cat -- ${files}\""
-	)" 2>/dev/null
-	rc=${?}
-	set -- "${fargs[@]}"
+	# Test 3 # {{{
+	(
+		check="Test 3"
 
-	if (( rc )); then
-		error "std::push Example 3 failed: ${rc}"
-		result=1
-	else
-		std::define expected <<'EOF'
-su -c "cat -- a1 ' a2 ' \'a3\' '"a4"' '<a5' '>a6'"
-EOF
-		if [[ "${response:-}" == "${expected}" ]]; then
-			info "std::push Example 3: okay"
+		std::emktemp -var tempfile -suffix "${$}"
+		debug "${func} created file '${tempfile:-}' with suffix '${$}'"
+		if ! [[ -n "${tempfile:-}" ]]; then
+			error "${func} returned no file-name"
+			rc=1
 		else
-			error "std::push Example 3: failed"
-			info "Expected:"
-			output "${expected}"
-			info "Received:"
-			output "${response}"
-			result=1
+			if ! [[ -e "${tempfile}" && -f "${tempfile}" ]]; then
+				error "Temporary file '${tempfile}' does not exst"
+				rc=1
+			else
+				(
+					#export std_DEBUG=2
+					std::cleanup 0
+				)
+				rc+=${?}
+
+				if [[ -e "${tempfile}" && -f "${tempfile}" ]]; then
+					error "std::cleanup failed to remove file '${tempfile}'"
+					(( rc++ ))
+				else
+					info "${func} ${check}: okay"
+				fi
+			fi
 		fi
-	fi
-	unset files
+
+		exit ${rc}
+	)
+	(( result += ${?} ))
 	# }}}
 
-	# Example 4 # {{{
-	local v
-	set -- source~1 'source 2' "source '3'"
-	response="$(
-		set -e
-		std::push -c v cp -- "${@}" \~dest
-		printf '%s\n' "${v}"
-	)" 2>/dev/null
-	rc=${?}
-	set -- "${fargs[@]}"
+	# Test 4 # {{{
+	(
+		check="Test 4"
 
-	if (( rc )); then
-		error "std::push Example 4 failed: ${rc}"
-		result=1
-	else
-		std::define expected <<'EOF'
-cp -- source~1 'source 2' 'source '\'3\' '~dest'
-EOF
-		if [[ "${response:-}" == "${expected}" ]]; then
-			info "std::push Example 4: okay"
+		mkdir "${TMPDIR:-/tmp}"/stdlib-"${NAME}" || die "Cannot mkdir('${TMPDIR:-/tmp}/stdlib-${NAME}')"
+
+		std::emktemp -var tempfile -tmpdir "${TMPDIR:-/tmp}/stdlib-${NAME}" -suffix "${$}"
+		debug "${func} created file '${tempfile:-}' with tmpdir '${TMPDIR:-/tmp}/stdlib-${NAME}' and suffix '${$}'"
+		if ! [[ -n "${tempfile:-}" ]]; then
+			error "${func} returned no file-name"
+			rc=1
 		else
-			error "std::push Example 4: failed"
-			info "Expected:"
-			output "${expected}"
-			info "Received:"
-			output "${response}"
-			result=1
+			if ! [[ -e "${tempfile}" && -f "${tempfile}" ]]; then
+				error "Temporary file '${tempfile}' does not exst"
+				rc=1
+			else
+				(
+					#export std_DEBUG=2
+					std::cleanup 0
+				)
+				rc+=${?}
+
+				if [[ -e "${tempfile}" && -f "${tempfile}" ]]; then
+					error "std::cleanup failed to remove file '${tempfile}'"
+					(( rc++ ))
+				else
+					info "${func} ${check}: okay"
+				fi
+			fi
 		fi
-	fi
-	unset v
+
+		rmdir "${TMPDIR:-/tmp}"/stdlib-"${NAME}" || die "Cannot rmdir('${TMPDIR:-/tmp}/stdlib-${NAME}')"
+
+		exit ${rc}
+	)
+	(( result += ${?} ))
 	# }}}
 
-	# Example 5 # {{{
-	local data
-	response="$(
-		set -e
+	# Test 5 # {{{
+	(
+		check="Test 5"
 
-		function donothing() {
-			:
-		}
-		function dosomething() {
-			std::push data "item"
-		}
-		std::push -c data || true # For 'set -e'
-		donothing
-		std::push data || echo 'nothing was pushed to $data in donothing'
-		dosomething
-		std::push data || echo 'nothing was pushed to $data in dosomething'
-	)" 2>/dev/null
-	rc=${?}
-	set -- "${fargs[@]}"
-
-	if (( rc )); then
-		error "std::push Example 5 failed: ${rc}"
-		result=1
-	else
-		std::define expected <<'EOF'
-nothing was pushed to $data in donothing
-EOF
-		if [[ "${response:-}" == "${expected}" ]]; then
-			info "std::push Example 5: okay"
+		std::emktemp -var tempfile -suffix "${$}" -directory
+		debug "${func} created directory '${tempfile:-}' with suffix '${$}'"
+		if ! [[ -n "${tempfile:-}" ]]; then
+			error "${func} returned no directory-name"
+			rc=1
 		else
-			error "std::push Example 5: failed"
-			info "Expected:"
-			output "${expected}"
-			info "Received:"
-			output "${response}"
-			result=1
+			if ! [[ -e "${tempfile}" && -d "${tempfile}" ]]; then
+				error "Temporary directory '${tempfile}' does not exst"
+				rc=1
+			else
+				(
+					#export std_DEBUG=2
+					std::cleanup 0
+				)
+				rc+=${?}
+
+				if [[ -e "${tempfile}" && -d "${tempfile}" ]]; then
+					error "std::cleanup failed to remove directory '${tempfile}'"
+					(( rc++ ))
+				else
+					info "${func} ${check}: okay"
+				fi
+			fi
 		fi
-	fi
-	unset data
+
+		exit ${rc}
+	)
+	(( result += ${?} ))
 	# }}}
+
+	# Test 6 # {{{
+	(
+		check="Test 6"
+
+		mkdir "${TMPDIR:-/tmp}"/stdlib-"${NAME}" || die "Cannot mkdir('${TMPDIR:-/tmp}/stdlib-${NAME}')"
+
+		std::emktemp -var tempfile -tmpdir "${TMPDIR:-/tmp}/stdlib-${NAME}" -suffix "${$}" -directory
+		debug "${func} created directory '${tempfile:-}' with tmpdir '${TMPDIR:-/tmp}/stdlib-${NAME}' and suffix '${$}'"
+		if ! [[ -n "${tempfile:-}" ]]; then
+			error "${func} returned no directory-name"
+			rc=1
+		else
+			if ! [[ -e "${tempfile}" && -d "${tempfile}" ]]; then
+				error "Temporary directory '${tempfile}' does not exst"
+				rc=1
+			else
+				(
+					#export std_DEBUG=2
+					std::cleanup 0
+				)
+				rc+=${?}
+
+				if [[ -e "${tempfile}" && -d "${tempfile}" ]]; then
+					error "std::cleanup failed to remove directory '${tempfile}'"
+					(( rc++ ))
+				else
+					info "${func} ${check}: okay"
+				fi
+			fi
+		fi
+
+		rmdir "${TMPDIR:-/tmp}"/stdlib-"${NAME}" || die "Cannot rmdir('${TMPDIR:-/tmp}/stdlib-${NAME}')"
+
+		exit ${rc}
+	)
+	(( result += ${?} ))
+	# }}}
+
+	if (( result )); then
+		error "${FUNCNAME[0]##*_} failed test-suite"
+	else
+		info "${FUNCNAME[0]##*_} passed test-suite"
+	fi
 
 	# Don't stomp std_ERRNO
 	return ${result}
-} # push::test # }}}
-
-function parseargs::test() { # {{{
-	local item1 item2 item3 unknown
-	local -i std_PARSEARGS_parsed=0 result=0
-	local -a args
-
-	(
-		args=( -item1 a -item2 b -item3 c )
-		info "Stripping arguments from '${args[*]}' ..."
-
-		std::parseargs --strip -- "${args[@]}"
-		eval "set -- '$( std::parseargs --strip -- "${args[@]}" )'"
-
-		if ! [[ -n "${std_PARSEARGS_parsed:-}" ]]; then
-			warn "std_PARSEARGS_parsed not set!"
-		else
-			if ! (( std_PARSEARGS_parsed )); then
-				output "std_PARSEARGS_parsed='${std_PARSEARGS_parsed}'"
-			fi
-		fi
-	)
-
-	#output "\n"
-	(
-		args=( -item1 a b -item2 c d -item3 e )
-		info "Stripping arguments from '${args[*]}' ..."
-
-		std::parseargs --strip -- "${args[@]}"
-		eval "set -- '$( std::parseargs --strip -- "${args[@]}" )'"
-
-		if ! [[ -n "${std_PARSEARGS_parsed:-}" ]]; then
-			warn "std_PARSEARGS_parsed not set!"
-		else
-			if ! (( std_PARSEARGS_parsed )); then
-				output "std_PARSEARGS_parsed='${std_PARSEARGS_parsed}'"
-			fi
-		fi
-	)
-
-	#output "\n"
-	(
-		args=( -item1 a -item2 b -item3 c )
-		info "Argument-parsing '${args[*]}' ..."
-
-		std::parseargs --single --permissive --var unknown -- "${args[@]}"
-		eval "$( std::parseargs --single --permissive --var unknown -- "${args[@]}" )"
-		echo "item1 is '${item1:-}', '${item1[*]:-}'"
-		echo "item2 is '${item2:-}', '${item2[*]:-}'"
-		echo "item3 is '${item3:-}', '${item3[*]:-}'"
-		echo "unknown is '${unknown:-}', '${unknown[*]:-}'"
-
-		if ! [[ -n "${std_PARSEARGS_parsed:-}" ]]; then
-			warn "std_PARSEARGS_parsed not set!"
-		else
-			if ! (( std_PARSEARGS_parsed )); then
-				output "std_PARSEARGS_parsed='${std_PARSEARGS_parsed}'"
-			fi
-		fi
-	)
-
-	#output "\n"
-	(
-		args=( -item1 a b -item2 c d -item3 e )
-		info "Argument-parsing '${args[*]}' with --single ..."
-
-		std::parseargs --single --permissive --var unknown -- "${args[@]}"
-		eval "$( std::parseargs --single --permissive --var unknown -- "${args[@]}" )"
-		echo "item1 is '${item1:-}', '${item1[*]:-}'"
-		echo "item2 is '${item2:-}', '${item2[*]:-}'"
-		echo "item3 is '${item3:-}', '${item3[*]:-}'"
-		echo "unknown is '${unknown:-}', '${unknown[*]:-}'"
-
-		if ! [[ -n "${std_PARSEARGS_parsed:-}" ]]; then
-			warn "std_PARSEARGS_parsed not set!"
-		else
-			if ! (( std_PARSEARGS_parsed )); then
-				output "std_PARSEARGS_parsed='${std_PARSEARGS_parsed}'"
-			fi
-		fi
-	)
-
-	#output "\n"
-	(
-		args=( -item1 a b -item2 c d -item3 e )
-		info "Argument-parsing '${args[*]}' without --single ..."
-
-		std::parseargs --permissive --var unknown -- "${args[@]}"
-		eval "$( std::parseargs --permissive --var unknown -- "${args[@]}" )"
-		echo "item1 is '${item1:-}', '${item1[*]:-}'"
-		echo "item2 is '${item2:-}', '${item2[*]:-}'"
-		echo "item3 is '${item3:-}', '${item3[*]:-}'"
-		echo "unknown is '${unknown:-}', '${unknown[*]:-}'"
-
-		if ! [[ -n "${std_PARSEARGS_parsed:-}" ]]; then
-			warn "std_PARSEARGS_parsed not set!"
-		else
-			if ! (( std_PARSEARGS_parsed )); then
-				output "std_PARSEARGS_parsed='${std_PARSEARGS_parsed}'"
-			fi
-		fi
-	)
-
-	#output "\n"
-	(
-		args=( -item1 "a b" c -item2 d "e f" -item3 "g h" "i j" )
-		info "Argument-parsing '${args[*]}' without --single ..."
-
-		std::parseargs --permissive --var unknown -- "${args[@]}"
-		eval "$( std::parseargs --permissive --var unknown -- "${args[@]}" )"
-		echo "item1 is '${item1:-}', '${item1[*]:-}'"
-		echo "item2 is '${item2:-}', '${item2[*]:-}'"
-		echo "item3 is '${item3:-}', '${item3[*]:-}'"
-		echo "unknown is '${unknown:-}', '${unknown[*]:-}'"
-
-		if ! [[ -n "${std_PARSEARGS_parsed:-}" ]]; then
-			warn "std_PARSEARGS_parsed not set!"
-		else
-			if ! (( std_PARSEARGS_parsed )); then
-				output "std_PARSEARGS_parsed='${std_PARSEARGS_parsed}'"
-			fi
-		fi
-	)
-
-	#output "\n"
-	(
-		args=( a )
-		info "Argument-parsing '${args[*]}' ..."
-
-		std::parseargs --permissive --var unknown -- "${args[@]}"
-		eval "$( std::parseargs --permissive --var unknown -- "${args[@]}" )"
-		echo "unknown is '${unknown:-}', '${unknown[*]:-}'"
-
-		if ! [[ -n "${std_PARSEARGS_parsed:-}" ]]; then
-			warn "std_PARSEARGS_parsed not set!"
-		else
-			if ! (( std_PARSEARGS_parsed )); then
-				output "std_PARSEARGS_parsed='${std_PARSEARGS_parsed}'"
-			fi
-		fi
-	)
-
-	#output "\n"
-	(
-		args=()
-		info "Argument-parsing '${args[*]:-}' ..."
-
-		std::parseargs --permissive --var unknown -- "${args[@]:-}"
-		eval "$( std::parseargs --permissive --var unknown -- "${args[@]:-}" )"
-		echo "unknown is '${unknown:-}', '${unknown[*]:-}'"
-
-		if ! [[ -n "${std_PARSEARGS_parsed:-}" ]]; then
-			warn "std_PARSEARGS_parsed not set!"
-		else
-			if ! (( std_PARSEARGS_parsed )); then
-				output "std_PARSEARGS_parsed='${std_PARSEARGS_parsed}'"
-			fi
-		fi
-	)
-	#output "\n"
-	std::colour -type warn -colour red "WARN: Expected failure (without --permissive):"
-	(
-		args=( a )
-		info "Argument-parsing '${args[*]}' ..."
-
-		std::parseargs --var unknown -- "${args[@]}"
-		eval "$( std::parseargs --var unknown -- "${args[@]}" )"
-		echo "unknown is '${unknown:-}', '${unknown[*]:-}'"
-
-		if ! [[ -n "${std_PARSEARGS_parsed:-}" ]]; then
-			warn "std_PARSEARGS_parsed not set!"
-		else
-			if ! (( std_PARSEARGS_parsed )); then
-				output "std_PARSEARGS_parsed='${std_PARSEARGS_parsed}'"
-			fi
-		fi
-	)
-
-	#output "\n"
-	std::colour -type warn -colour red "WARN: Expected failure (without --permissive):"
-	(
-		args=()
-		info "Argument-parsing '${args[*]:-}' ..."
-
-		std::parseargs --var unknown -- "${args[@]:-}"
-		eval "$( std::parseargs --var unknown -- "${args[@]:-}" )"
-		echo "unknown is '${unknown:-}', '${unknown[*]:-}'"
-
-		if ! [[ -n "${std_PARSEARGS_parsed:-}" ]]; then
-			warn "std_PARSEARGS_parsed not set!"
-		else
-			if ! (( std_PARSEARGS_parsed )); then
-				output "std_PARSEARGS_parsed='${std_PARSEARGS_parsed}'"
-			fi
-		fi
-	)
-
-	# Don't stomp std_ERRNO
-	return ${result}
-} # parseargs::test # }}}
+} # emktemp::test # }}}
 
 function http::test() { # {{{
 	local -i ic=0 rc=0 code=0 result=0
@@ -664,6 +415,1282 @@ function http::test() { # {{{
 	return ${result}
 } # http::test # }}}
 
+function mktemp::test() { # {{{
+	local tempfile
+	local -i rc=0 result=0
+
+	local func="std::mktemp" check=""
+
+	if [[ -e "${TMPDIR:-/tmp}"/stdlib-"${NAME}" ]]; then
+		error "Cannot run test-suite if filesystem object '${TMPDIR:-/tmp}/stdlib-${NAME}' exists"
+		return 1
+	fi
+
+	# Test 1 # {{{
+	(
+		check="Test 1"
+		rc=0
+
+		tempfile="$( std::mktemp )"
+		debug "${func} created file '${tempfile:-}' with no arguments"
+		if ! [[ -n "${tempfile:-}" ]]; then
+			error "${func} returned no file-name"
+			rc=1
+		else
+			std::garbagecollect "${tempfile}"
+			if ! [[ -e "${tempfile}" && -f "${tempfile}" ]]; then
+				error "Temporary file '${tempfile}' does not exst"
+				rc=1
+			else
+				(
+					#export std_DEBUG=2
+					std::cleanup 0
+				)
+				rc+=${?}
+
+				if [[ -e "${tempfile}" && -f "${tempfile}" ]]; then
+					error "std::cleanup failed to remove file '${tempfile}'"
+					(( rc++ ))
+				else
+					info "${func} ${check}: okay"
+				fi
+			fi
+		fi
+
+		exit ${rc}
+	)
+	(( result += ${?} ))
+	# }}}
+
+	# Test 2 # {{{
+	(
+		check="Test 2"
+
+		tempfile="$( std::mktemp "stdlib-${NAME}" )"
+		debug "${func} created file '${tempfile:-}' with template 'stdlib-${NAME}'"
+		if ! [[ -n "${tempfile:-}" ]]; then
+			error "${func} returned no file-name"
+			rc=1
+		else
+			std::garbagecollect "${tempfile}"
+			if ! [[ -e "${tempfile}" && -f "${tempfile}" ]]; then
+				error "Temporary file '${tempfile}' does not exst"
+				rc=1
+			else
+				(
+					#export std_DEBUG=2
+					std::cleanup 0
+				)
+				rc+=${?}
+
+				if [[ -e "${tempfile}" && -f "${tempfile}" ]]; then
+					error "std::cleanup failed to remove file '${tempfile}'"
+					(( rc++ ))
+				else
+					info "${func} ${check}: okay"
+				fi
+			fi
+		fi
+
+		exit ${rc}
+	)
+	(( result += ${?} ))
+	# }}}
+
+	# Test 3 # {{{
+	(
+		check="Test 3"
+
+		tempfile="$( std::mktemp -suffix "${$}" "stdlib-${NAME}" )"
+		debug "${func} created file '${tempfile:-}' with suffix '${$}' and template 'stdlib-${NAME}'"
+		if ! [[ -n "${tempfile:-}" ]]; then
+			error "${func} returned no file-name"
+			rc=1
+		else
+			std::garbagecollect "${tempfile}"
+			if ! [[ -e "${tempfile}" && -f "${tempfile}" ]]; then
+				error "Temporary file '${tempfile}' does not exst"
+				rc=1
+			else
+				(
+					#export std_DEBUG=2
+					std::cleanup 0
+				)
+				rc+=${?}
+
+				if [[ -e "${tempfile}" && -f "${tempfile}" ]]; then
+					error "std::cleanup failed to remove file '${tempfile}'"
+					(( rc++ ))
+				else
+					info "${func} ${check}: okay"
+				fi
+			fi
+		fi
+
+		exit ${rc}
+	)
+	(( result += ${?} ))
+	# }}}
+
+	# Test 4 # {{{
+	(
+		check="Test 4"
+
+		mkdir "${TMPDIR:-/tmp}"/stdlib-"${NAME}" || die "Cannot mkdir('${TMPDIR:-/tmp}/stdlib-${NAME}')"
+
+		tempfile="$( std::mktemp -tmpdir "${TMPDIR:-/tmp}/stdlib-${NAME}" -suffix "${$}" "stdlib-${NAME}" )"
+		debug "${func} created file '${tempfile:-}' with tmpdir ${TMPDIR:-/tmp}/stdlib-${NAME}', suffix '${$}' and template 'stdlib-${NAME}'"
+		if ! [[ -n "${tempfile:-}" ]]; then
+			error "${func} returned no file-name"
+			rc=1
+		else
+			std::garbagecollect "${tempfile}"
+			if ! [[ -e "${tempfile}" && -f "${tempfile}" ]]; then
+				error "Temporary file '${tempfile}' does not exst"
+				rc=1
+			else
+				(
+					#export std_DEBUG=2
+					std::cleanup 0
+				)
+				rc+=${?}
+
+				if [[ -e "${tempfile}" && -f "${tempfile}" ]]; then
+					error "std::cleanup failed to remove file '${tempfile}'"
+					(( rc++ ))
+				else
+					info "${func} ${check}: okay"
+				fi
+			fi
+		fi
+
+		rmdir "${TMPDIR:-/tmp}"/stdlib-"${NAME}" || die "Cannot rmdir('${TMPDIR:-/tmp}/stdlib-${NAME}')"
+
+		exit ${rc}
+	)
+	(( result += ${?} ))
+	# }}}
+
+	# Test 5 # {{{
+	(
+		check="Test 5"
+
+		#local -i std_debug="${std_DEBUG}"
+		#std_DEBUG=2
+		tempfile="$( std::mktemp -directory -suffix "${$}" "stdlib-${NAME}" )"
+		#std_DEBUG="${std_debug}"
+		debug "${func} created directory '${tempfile:-}' with suffix '${$}' and template 'stdlib-${NAME}'"
+		if ! [[ -n "${tempfile:-}" ]]; then
+			error "${func} returned no directory-name"
+			rc=1
+		else
+			std::garbagecollect "${tempfile}"
+			if ! [[ -e "${tempfile}" && -d "${tempfile}" ]]; then
+				error "Temporary directory '${tempfile}' does not exst"
+				rc=1
+			else
+				(
+					#export std_DEBUG=2
+					std::cleanup 0
+				)
+				rc+=${?}
+
+				if [[ -e "${tempfile}" && -d "${tempfile}" ]]; then
+					error "std::cleanup failed to remove directory '${tempfile}'"
+					(( rc++ ))
+				else
+					info "${func} ${check}: okay"
+				fi
+			fi
+		fi
+
+		exit ${rc}
+	)
+	(( result += ${?} ))
+	# }}}
+
+	# Test 6 # {{{
+	(
+		check="Test 6"
+
+		mkdir "${TMPDIR:-/tmp}"/stdlib-"${NAME}" || die "Cannot mkdir('${TMPDIR:-/tmp}/stdlib-${NAME}')"
+
+		tempfile="$( std::mktemp -directory -tmpdir "${TMPDIR:-/tmp}/stdlib-${NAME}" -suffix "${$}" "stdlib-${NAME}" )"
+		debug "${func} created directory '${tempfile:-}' with tmpdir '${TMPDIR:-/tmp}/stdlib-${NAME}', suffix '${$}' and template 'stdlib-${NAME}'"
+		if ! [[ -n "${tempfile:-}" ]]; then
+			error "${func} returned no directory-name"
+			rc=1
+		else
+			std::garbagecollect "${tempfile}"
+			if ! [[ -e "${tempfile}" && -d "${tempfile}" ]]; then
+				error "Temporary directory '${tempfile}' does not exst"
+				rc=1
+			else
+				(
+					#export std_DEBUG=2
+					std::cleanup 0
+				)
+				rc+=${?}
+
+				if [[ -e "${tempfile}" && -d "${tempfile}" ]]; then
+					error "std::cleanup failed to remove directory '${tempfile}'"
+					(( rc++ ))
+				else
+					info "${func} ${check}: okay"
+				fi
+			fi
+		fi
+
+		rmdir "${TMPDIR:-/tmp}"/stdlib-"${NAME}" || die "Cannot rmdir('${TMPDIR:-/tmp}/stdlib-${NAME}')"
+
+		exit ${rc}
+	)
+	(( result += ${?} ))
+	# }}}
+
+	if (( result )); then
+		error "${FUNCNAME[0]##*_} failed test-suite"
+	else
+		info "${FUNCNAME[0]##*_} passed test-suite"
+	fi
+
+	# Don't stomp std_ERRNO
+	return ${result}
+} # mktemp::test # }}}
+
+function output::test() { # {{{
+	local -i debug=${std_DEBUG:-0}
+
+	output "Colourisation test:\n"
+
+	std::colour "Message"
+	std::colour "Multi-word message"
+	output
+	std::colour "WARN: Warning"
+	std::colour "warning message"
+	std::colour "info information"
+	std::colour "information: info"
+	std::colour "NOTICE: Notice"
+	std::colour "note: Notice"
+	std::colour "debug debug"
+	std::colour "warn warn"
+	std::colour "warning warning"
+	std::colour "error error"
+	output
+	std::colour Red "Text in red specified inline"
+	output
+	std::colour -colour black "Black"
+	std::colour -colour red "Red"
+	std::colour -colour green "Green"
+	std::colour -colour yellow "Yellow"
+	std::colour -colour blue "Blue"
+	std::colour -colour magenta "Magenta"
+	std::colour -colour cyan "Cyan"
+	std::colour -colour white "White"
+	std::colour -colour $(( ( 1 << 16 ) + 0 )) "Bright Black"
+	std::colour -colour $(( ( 1 << 16 ) + 1 )) "Bright Red"
+	std::colour -colour $(( ( 1 << 16 ) + 2 )) "Bright Green"
+	std::colour -colour $(( ( 1 << 16 ) + 3 )) "Bright Yellow"
+	std::colour -colour $(( ( 1 << 16 ) + 4 )) "Bright Blue"
+	std::colour -colour $(( ( 1 << 16 ) + 5 )) "Bright Magenta"
+	std::colour -colour $(( ( 1 << 16 ) + 6 )) "Bright Cyan"
+	std::colour -colour $(( ( 1 << 16 ) + 7 )) "Bright White"
+	std::colour -colour $(( ( 4 << 16 ) + ( 3 << 8 ) + 4 )) "Underlined blue on yellow"
+	output
+	std::colour -type debug "This is debug"
+	std::colour -type error "This is error"
+	std::colour -type exec "This is exec"
+	std::colour -type fail "This is fail"
+	std::colour -type fatal "This is fatal"
+	std::colour -type info "This is info"
+	std::colour -type note "This is note"
+	std::colour -type notice "This is notice"
+	std::colour -type okay "This is okay"
+	std::colour -type ok "This is ok"
+	std::colour -type warn "This is warn"
+	output
+	std::colour -type fatal -colour yellow "!!! Yellow text following red fatal prefix"
+	std::colour -type okay -colour magenta "!!! Magenta text following green ok prefix"
+	output
+	std::colour -colour $(( ( 1 << 16 ) + 2 )) "Bright green"
+	std::colour -colour $(( 2 )) "Dim green"
+	output
+	info "Info"
+	notice "Notice"
+	note "Note"
+	std_DEBUG=0 debug "This should not be displayed..."
+	std_DEBUG=1 debug "Debug"
+	std_DEBUG=${debug}
+	warn "Warning"
+	error "Error"
+	( die "Die" )
+
+	output "\nSpacing test:"
+	output "         11111111112"
+	output "12345678901234567890"
+	std::colour -colour white "1                   "
+	std::colour -colour white "    5               "
+	std::colour -colour white "1   5               "
+	std::colour -colour white "        9           "
+	std::colour -colour white "1       9           "
+	std::colour -colour white "    5   9           "
+	std::colour -colour white "1   5   9           "
+	std::colour -colour white "1   5   9   *       "
+	std::colour -colour white "1   5   9   *   +   "
+	echo " $( std::colour -colour white "2 4 6 8 - * + ! @ #" )x"
+	echo -n ' ' ; echo -n "$( std::colour -colour white "2 4 6 8 - * + ! @ #" )" ; echo 'x'
+	echo -n "$( std::colour -colour white "1 3 5 7 9 # @ ! + *" )" ; echo ' x'
+
+	output "\nColourisation test complete"
+
+	# Defined in stdlib.sh
+	# shellcheck disable=SC2034
+	std_ERRNO=0
+	return 0
+} # output::test # }}}
+
+function parseargs::test() { # {{{
+	local response expected item1 item2 item3 unknown
+	local -i rc=0 std_PARSEARGS_parsed=0 result=0
+	local -a args
+
+	# Clear any arguments we were called with...
+	while [[ -n "${1:-}" || -n "${*:-}" ]]; do
+		shift
+	done
+
+	local func="std::parseargs" check=""
+
+	# Test 1 # {{{
+	(
+		check="Test 1"
+		result=0
+
+		args=( -item1 a -item2 b -item3 c )
+		(( std_DEBUG )) && info "Stripping arguments from '${args[*]}' ..."
+
+		(( std_DEBUG )) && debug "$( std::parseargs --strip -- "${args[@]}" )"
+		eval "set -- '$( std::parseargs --strip -- "${args[@]}" )'"
+		response="$(
+			echo "${item1[*]:-}"
+			echo "${item2[*]:-}"
+			echo "${item3[*]:-}"
+			echo "${*:-}"
+		)"
+		rc=${?}
+		if (( std_DEBUG )); then
+			echo "item1 is '${item1:-}', '${item1[*]:-}'"
+			echo "item2 is '${item2:-}', '${item2[*]:-}'"
+			echo "item3 is '${item3:-}', '${item3[*]:-}'"
+			echo "unknown is '${unknown:-}', '${unknown[*]:-}'"
+		fi
+
+		if ! [[ -n "${std_PARSEARGS_parsed:-}" ]]; then
+			warn "std_PARSEARGS_parsed not set!"
+		else
+			(( std_DEBUG )) && output "std_PARSEARGS_parsed='${std_PARSEARGS_parsed}'"
+		fi
+		# Doesn't apply when stripping arguments
+		#(( rc )) || rc=$(( ! std_PARSEARGS_parsed ))
+
+		if (( rc )); then
+			error "${func} ${check} failed: ${rc}"
+			result=1
+		else
+			std::define expected <<'EOF'
+
+
+
+a
+b
+c
+EOF
+			if [[ "${response:-}" == "${expected}" ]]; then
+				info "${func} ${check}: okay"
+			else
+				error "${func} ${check}: failed"
+				info "Expected:"
+				output "${expected}"
+				info "Received:"
+				output "${response}"
+				result=1
+			fi
+		fi
+
+		exit ${result}
+	)
+	(( result += ${?} ))
+	# }}}
+
+	#output "\n"
+	# Test 2 # {{{
+	(
+		check="Test 2"
+		result=0
+
+		args=( -item1 a b -item2 c d -item3 e )
+		(( std_DEBUG )) && info "Stripping arguments from '${args[*]}' ..."
+
+		(( std_DEBUG )) && debug "$( std::parseargs --strip -- "${args[@]}" )"
+		eval "set -- '$( std::parseargs --strip -- "${args[@]}" )'"
+		response="$(
+			echo "${item1[*]:-}"
+			echo "${item2[*]:-}"
+			echo "${item3[*]:-}"
+			echo "${*:-}"
+		)"
+		rc=${?}
+		if (( std_DEBUG )); then
+			echo "item1 is '${item1:-}', '${item1[*]:-}'"
+			echo "item2 is '${item2:-}', '${item2[*]:-}'"
+			echo "item3 is '${item3:-}', '${item3[*]:-}'"
+			echo "unknown is '${unknown:-}', '${unknown[*]:-}'"
+		fi
+
+		if ! [[ -n "${std_PARSEARGS_parsed:-}" ]]; then
+			warn "std_PARSEARGS_parsed not set!"
+		else
+			(( std_DEBUG )) && output "std_PARSEARGS_parsed='${std_PARSEARGS_parsed}'"
+		fi
+		# Doesn't apply when stripping arguments
+		#(( rc )) || rc=$(( ! std_PARSEARGS_parsed ))
+
+		if (( rc )); then
+			error "${func} ${check} failed: ${rc}"
+			result=1
+		else
+			std::define expected <<'EOF'
+
+
+
+a
+b
+c
+d
+e
+EOF
+			if [[ "${response:-}" == "${expected}" ]]; then
+				info "${func} ${check}: okay"
+			else
+				error "${func} ${check}: failed"
+				info "Expected:"
+				output "${expected}"
+				info "Received:"
+				output "${response}"
+				result=1
+			fi
+		fi
+
+		exit ${result}
+	)
+	(( result += ${?} ))
+	# }}}
+
+	#output "\n"
+	# Test 3 # {{{
+	(
+		check="Test 3"
+		result=0
+
+		args=( -item1 a -item2 b -item3 c )
+		(( std_DEBUG )) && info "Argument-parsing '${args[*]}' ..."
+
+		(( std_DEBUG )) && debug "$( std::parseargs --single --permissive --var unknown -- "${args[@]}" )"
+		eval "$( std::parseargs --single --permissive --var unknown -- "${args[@]}" )"
+		response="$(
+			echo "${item1[*]:-}"
+			echo "${item2[*]:-}"
+			echo "${item3[*]:-}"
+			echo "${unknown[*]:-}"
+		)"
+		rc=${?}
+		if (( std_DEBUG )); then
+			echo "item1 is '${item1:-}', '${item1[*]:-}'"
+			echo "item2 is '${item2:-}', '${item2[*]:-}'"
+			echo "item3 is '${item3:-}', '${item3[*]:-}'"
+			echo "unknown is '${unknown:-}', '${unknown[*]:-}'"
+		fi
+
+		if ! [[ -n "${std_PARSEARGS_parsed:-}" ]]; then
+			warn "std_PARSEARGS_parsed not set!"
+		else
+			(( std_DEBUG )) && output "std_PARSEARGS_parsed='${std_PARSEARGS_parsed}'"
+		fi
+		(( rc )) || rc=$(( ! std_PARSEARGS_parsed ))
+
+		if (( rc )); then
+			error "${func} ${check} failed: ${rc}"
+			result=1
+		else
+			std::define expected <<'EOF'
+a
+b
+c
+EOF
+			if [[ "${response:-}" == "${expected}" ]]; then
+				info "${func} ${check}: okay"
+			else
+				error "${func} ${check}: failed"
+				info "Expected:"
+				output "${expected}"
+				info "Received:"
+				output "${response}"
+				result=1
+			fi
+		fi
+
+		exit ${result}
+	)
+	(( result += ${?} ))
+	# }}}
+
+	#output "\n"
+	# Test 4 # {{{
+	(
+		check="Test 4"
+		result=0
+
+		args=( -item1 a b -item2 c d -item3 e )
+		(( std_DEBUG )) && info "Argument-parsing '${args[*]}' with --single ..."
+
+		(( std_DEBUG )) && debug "$( std::parseargs --single --permissive --var unknown -- "${args[@]}" )"
+		eval "$( std::parseargs --single --permissive --var unknown -- "${args[@]}" )"
+		response="$(
+			echo "${item1[*]:-}"
+			echo "${item2[*]:-}"
+			echo "${item3[*]:-}"
+			echo "${unknown[*]:-}"
+		)"
+		rc=${?}
+		if (( std_DEBUG )); then
+			echo "item1 is '${item1:-}', '${item1[*]:-}'"
+			echo "item2 is '${item2:-}', '${item2[*]:-}'"
+			echo "item3 is '${item3:-}', '${item3[*]:-}'"
+			echo "unknown is '${unknown:-}', '${unknown[*]:-}'"
+		fi
+
+		if ! [[ -n "${std_PARSEARGS_parsed:-}" ]]; then
+			warn "std_PARSEARGS_parsed not set!"
+		else
+			if ! (( std_PARSEARGS_parsed )); then
+				(( std_DEBUG )) && output "std_PARSEARGS_parsed='${std_PARSEARGS_parsed}'"
+			fi
+		fi
+		(( rc )) || rc=$(( ! std_PARSEARGS_parsed ))
+
+		if (( rc )); then
+			error "${func} ${check} failed: ${rc}"
+			result=1
+		else
+			std::define expected <<'EOF'
+a
+c
+e
+b d
+EOF
+			if [[ "${response:-}" == "${expected}" ]]; then
+				info "${func} ${check}: okay"
+			else
+				error "${func} ${check}: failed"
+				info "Expected:"
+				output "${expected}"
+				info "Received:"
+				output "${response}"
+				result=1
+			fi
+		fi
+
+		exit ${result}
+	)
+	(( result += ${?} ))
+	# }}}
+
+	#output "\n"
+	# Test 5 # {{{
+	(
+		check="Test 5"
+		result=0
+
+		args=( -item1 a b -item2 c d -item3 e )
+		(( std_DEBUG )) && info "Argument-parsing '${args[*]}' without --single ..."
+
+		(( std_DEBUG )) && debug "$( std::parseargs --permissive --var unknown -- "${args[@]}" )"
+		eval "$( std::parseargs --permissive --var unknown -- "${args[@]}" )"
+		response="$(
+			echo "${item1[*]:-}"
+			echo "${item2[*]:-}"
+			echo "${item3[*]:-}"
+			echo "${unknown[*]:-}"
+		)"
+		rc=${?}
+		if (( std_DEBUG )); then
+			echo "item1 is '${item1:-}', '${item1[*]:-}'"
+			echo "item2 is '${item2:-}', '${item2[*]:-}'"
+			echo "item3 is '${item3:-}', '${item3[*]:-}'"
+			echo "unknown is '${unknown:-}', '${unknown[*]:-}'"
+		fi
+
+		if ! [[ -n "${std_PARSEARGS_parsed:-}" ]]; then
+			warn "std_PARSEARGS_parsed not set!"
+		else
+			if ! (( std_PARSEARGS_parsed )); then
+				(( std_DEBUG )) && output "std_PARSEARGS_parsed='${std_PARSEARGS_parsed}'"
+			fi
+		fi
+		(( rc )) || rc=$(( ! std_PARSEARGS_parsed ))
+
+		if (( rc )); then
+			error "${func} ${check} failed: ${rc}"
+			result=1
+		else
+			std::define expected <<'EOF'
+a b
+c d
+e
+EOF
+			if [[ "${response:-}" == "${expected}" ]]; then
+				info "${func} ${check}: okay"
+			else
+				error "${func} ${check}: failed"
+				info "Expected:"
+				output "${expected}"
+				info "Received:"
+				output "${response}"
+				result=1
+			fi
+		fi
+
+		exit ${result}
+	)
+	(( result += ${?} ))
+
+	# }}}
+
+	#output "\n"
+	# Test 6 # {{{
+	(
+		check="Test 6"
+		result=0
+
+		args=( -item1 "a b" c -item2 d "e f" -item3 "g h" "i j" )
+		(( std_DEBUG )) && info "Argument-parsing '${args[*]}' without --single ..."
+
+		(( std_DEBUG )) && debug "$( std::parseargs --permissive --var unknown -- "${args[@]}" )"
+		eval "$( std::parseargs --permissive --var unknown -- "${args[@]}" )"
+		response="$(
+			echo "${item1[0]:-}"
+			echo "${item1[1]:-}"
+			echo "${item2[0]:-}"
+			echo "${item2[1]:-}"
+			echo "${item3[0]:-}"
+			echo "${item3[1]:-}"
+			echo "${unknown[*]:-}"
+		)"
+		rc=${?}
+		if (( std_DEBUG )); then
+			echo "item1 is '${item1:-}', '${item1[*]:-}'"
+			echo "item2 is '${item2:-}', '${item2[*]:-}'"
+			echo "item3 is '${item3:-}', '${item3[*]:-}'"
+			echo "unknown is '${unknown:-}', '${unknown[*]:-}'"
+		fi
+
+		if ! [[ -n "${std_PARSEARGS_parsed:-}" ]]; then
+			warn "std_PARSEARGS_parsed not set!"
+		else
+			if ! (( std_PARSEARGS_parsed )); then
+				(( std_DEBUG )) && output "std_PARSEARGS_parsed='${std_PARSEARGS_parsed}'"
+			fi
+		fi
+		(( rc )) || rc=$(( ! std_PARSEARGS_parsed ))
+
+		if (( rc )); then
+			error "${func} ${check} failed: ${rc}"
+			result=1
+		else
+			std::define expected <<'EOF'
+a b
+c
+d
+e f
+g h
+i j
+EOF
+			if [[ "${response:-}" == "${expected}" ]]; then
+				info "${func} ${check}: okay"
+			else
+				error "${func} ${check}: failed"
+				info "Expected:"
+				output "${expected}"
+				info "Received:"
+				output "${response}"
+				result=1
+			fi
+		fi
+
+		exit ${result}
+	)
+	(( result += ${?} ))
+	# }}}
+
+	#output "\n"
+	# Test 7 # {{{
+	(
+		check="Test 7"
+		result=0
+
+		args=( a )
+		(( std_DEBUG )) && info "Argument-parsing '${args[*]}' ..."
+
+		(( std_DEBUG )) && debug "$( std::parseargs --permissive --var unknown -- "${args[@]}" )"
+		eval "$( std::parseargs --permissive --var unknown -- "${args[@]}" )"
+		response="$(
+			echo "${item1[*]:-}"
+			echo "${item2[*]:-}"
+			echo "${item3[*]:-}"
+			echo "${unknown[*]:-}"
+		)"
+		rc=${?}
+		if (( std_DEBUG )); then
+			echo "unknown is '${unknown:-}', '${unknown[*]:-}'"
+		fi
+
+		if ! [[ -n "${std_PARSEARGS_parsed:-}" ]]; then
+			warn "std_PARSEARGS_parsed not set!"
+		else
+			if ! (( std_PARSEARGS_parsed )); then
+				(( std_DEBUG )) && output "std_PARSEARGS_parsed='${std_PARSEARGS_parsed}'"
+			fi
+		fi
+		(( rc )) || rc=$(( ! std_PARSEARGS_parsed ))
+
+		if (( rc )); then
+			error "${func} ${check} failed: ${rc}"
+			result=1
+		else
+			std::define expected <<'EOF'
+
+
+
+a
+EOF
+			if [[ "${response:-}" == "${expected}" ]]; then
+				info "${func} ${check}: okay"
+			else
+				error "${func} ${check}: failed"
+				info "Expected:"
+				output "${expected}"
+				info "Received:"
+				output "${response}"
+				result=1
+			fi
+		fi
+
+		exit ${result}
+	)
+	(( result += ${?} ))
+
+	# }}}
+
+	#output "\n"
+	std::colour -type warn -colour red "WARN:   Test 8 expected failure"
+	# Test 8 # {{{
+	(
+		check="Test 8"
+		result=0
+
+		args=()
+		(( std_DEBUG )) && info "Argument-parsing '${args[*]:-}' ..."
+
+		(( std_DEBUG )) && debug "$( std::parseargs --permissive --var unknown -- "${args[@]:-}" )"
+		eval "$( std::parseargs --permissive --var unknown -- "${args[@]:-}" )"
+		response="$(
+			echo "${item1[*]:-}"
+			echo "${item2[*]:-}"
+			echo "${item3[*]:-}"
+			echo "${unknown[*]:-}"
+		)"
+		rc=${?}
+		if (( std_DEBUG )); then
+			echo "unknown is '${unknown:-}', '${unknown[*]:-}'"
+		fi
+
+		if ! [[ -n "${std_PARSEARGS_parsed:-}" ]]; then
+			warn "std_PARSEARGS_parsed not set!"
+		else
+			if ! (( std_PARSEARGS_parsed )); then
+				(( std_DEBUG )) && output "std_PARSEARGS_parsed='${std_PARSEARGS_parsed}'"
+			fi
+		fi
+		(( rc )) || rc=$(( ! std_PARSEARGS_parsed ))
+
+		if (( rc )); then
+			info "${func} ${check} failed: ${rc}"
+			#result=1
+		#else
+			std::define expected <<'EOF'
+EOF
+			if [[ "${response:-}" == "${expected}" ]]; then
+				#info "${func} ${check}: okay"
+				:
+			else
+				error "${func} ${check}: failed"
+				info "Expected:"
+				output "${expected}"
+				info "Received:"
+				output "${response}"
+				#result=1
+			fi
+		# Expected failure
+		else
+			result=1
+		fi
+
+		exit ${result}
+	)
+	(( result += ${?} ))
+	# }}}
+	#output "\n"
+	std::colour -type warn -colour red "WARN:   Test 9 expected failure (without --permissive):"
+	# Test 9 # {{{
+	(
+		check="Test 9"
+		result=0
+
+		args=( a )
+		(( std_DEBUG )) && info "Argument-parsing '${args[*]}' ..."
+
+		(( std_DEBUG )) && debug "$( std::parseargs --var unknown -- "${args[@]}" )"
+		eval "$( std::parseargs --var unknown -- "${args[@]}" )"
+		response="$(
+			echo "${item1[*]:-}"
+			echo "${item2[*]:-}"
+			echo "${item3[*]:-}"
+			echo "${unknown[*]:-}"
+		)"
+		rc=${?}
+		if (( std_DEBUG )); then
+			echo "unknown is '${unknown:-}', '${unknown[*]:-}'"
+		fi
+
+		if ! [[ -n "${std_PARSEARGS_parsed:-}" ]]; then
+			warn "std_PARSEARGS_parsed not set!"
+		else
+			if ! (( std_PARSEARGS_parsed )); then
+				(( std_DEBUG )) && output "std_PARSEARGS_parsed='${std_PARSEARGS_parsed}'"
+			fi
+		fi
+		(( rc )) || rc=$(( ! std_PARSEARGS_parsed ))
+
+		if (( rc )); then
+			info "${func} ${check} failed: ${rc}"
+			#result=1
+		#else
+			std::define expected <<'EOF'
+EOF
+			if [[ "${response:-}" == "${expected}" ]]; then
+				#info "${func} ${check}: okay"
+				:
+			else
+				error "${func} ${check}: failed"
+				info "Expected:"
+				output "${expected}"
+				info "Received:"
+				output "${response}"
+				#result=1
+			fi
+		# Expected failure
+		else
+			result=1
+		fi
+
+		exit ${result}
+	)
+	(( result += ${?} ))
+	# }}}
+
+	#output "\n"
+	std::colour -type warn -colour red "WARN:   Test 10 expected failure (without --permissive):"
+	# Test 10 # {{{
+	(
+		check="Test 10"
+		result=0
+
+		args=()
+		(( std_DEBUG )) && info "Argument-parsing '${args[*]:-}' ..."
+
+		(( std_DEBUG )) && debug "$( std::parseargs --var unknown -- "${args[@]:-}" )"
+		eval "$( std::parseargs --var unknown -- "${args[@]:-}" )"
+		response="$(
+			echo "${item1[*]:-}"
+			echo "${item2[*]:-}"
+			echo "${item3[*]:-}"
+			echo "${unknown[*]:-}"
+		)"
+		rc=${?}
+		if (( std_DEBUG )); then
+			echo "unknown is '${unknown:-}', '${unknown[*]:-}'"
+		fi
+
+		if ! [[ -n "${std_PARSEARGS_parsed:-}" ]]; then
+			warn "std_PARSEARGS_parsed not set!"
+		else
+			if ! (( std_PARSEARGS_parsed )); then
+				(( std_DEBUG )) && output "std_PARSEARGS_parsed='${std_PARSEARGS_parsed}'"
+			fi
+		fi
+		(( rc )) || rc=$(( ! std_PARSEARGS_parsed ))
+
+		if (( rc )); then
+			info "${func} ${check} failed: ${rc}"
+			#result=1
+		#else
+			std::define expected <<'EOF'
+EOF
+			if [[ "${response:-}" == "${expected}" ]]; then
+				#info "${func} ${check}: okay"
+				:
+			else
+				error "${func} ${check}: failed"
+				info "Expected:"
+				output "${expected}"
+				info "Received:"
+				output "${response}"
+				#result=1
+			fi
+		# Expected failure
+		else
+			result=1
+		fi
+
+		exit ${result}
+	)
+	(( result += ${?} ))
+	# }}}
+
+	#output "\n"
+	# Test 11 # {{{
+	(
+		check="Test 11"
+		result=0
+
+		args=( -item1 )
+		(( std_DEBUG )) && info "Argument-parsing '${args[*]:-}' ..."
+
+		(( std_DEBUG )) && debug "$( std::parseargs --permissive --var unknown -- "${args[@]:-}" )"
+		eval "$( std::parseargs --permissive --var unknown -- "${args[@]:-}" )"
+		response="$(
+			echo "${item1[*]:-}"
+			echo "${item2[*]:-}"
+			echo "${item3[*]:-}"
+			echo "${unknown[*]:-}"
+		)"
+		rc=${?}
+		if (( std_DEBUG )); then
+			echo "item1 is '${item1:-}', '${item1[*]:-}'"
+			echo "unknown is '${unknown:-}', '${unknown[*]:-}'"
+		fi
+
+		if ! [[ -n "${std_PARSEARGS_parsed:-}" ]]; then
+			warn "std_PARSEARGS_parsed not set!"
+		else
+			if ! (( std_PARSEARGS_parsed )); then
+				(( std_DEBUG )) && output "std_PARSEARGS_parsed='${std_PARSEARGS_parsed}'"
+			fi
+		fi
+		(( rc )) || rc=$(( ! std_PARSEARGS_parsed ))
+
+		if (( rc )); then
+			error "${func} ${check} failed: ${rc}"
+			result=1
+		else
+			std::define expected <<'EOF'
+__DEFINED__
+EOF
+			if [[ "${response:-}" == "${expected}" ]]; then
+				info "${func} ${check}: okay"
+			else
+				error "${func} ${check}: failed"
+				info "Expected:"
+				output "${expected}"
+				info "Received:"
+				output "${response}"
+				result=1
+			fi
+		fi
+
+		exit ${result}
+	)
+	(( result += ${?} ))
+	# }}}
+
+	#output "\n"
+	# Test 12 # {{{
+	(
+		check="Test 12"
+		result=0
+
+		args=( -item1 -item2 )
+		(( std_DEBUG )) && info "Argument-parsing '${args[*]:-}' ..."
+
+		(( std_DEBUG )) && debug "$( std::parseargs --permissive --var unknown -- "${args[@]:-}" )"
+		eval "$( std::parseargs --permissive --var unknown -- "${args[@]:-}" )"
+		response="$(
+			echo "${item1[*]:-}"
+			echo "${item2[*]:-}"
+			echo "${item3[*]:-}"
+			echo "${unknown[*]:-}"
+		)"
+		rc=${?}
+		if (( std_DEBUG )); then
+			echo "item1 is '${item1:-}', '${item1[*]:-}'"
+			echo "item2 is '${item2:-}', '${item2[*]:-}'"
+			echo "unknown is '${unknown:-}', '${unknown[*]:-}'"
+		fi
+
+		if ! [[ -n "${std_PARSEARGS_parsed:-}" ]]; then
+			warn "std_PARSEARGS_parsed not set!"
+		else
+			if ! (( std_PARSEARGS_parsed )); then
+				(( std_DEBUG )) && output "std_PARSEARGS_parsed='${std_PARSEARGS_parsed}'"
+			fi
+		fi
+		(( rc )) || rc=$(( ! std_PARSEARGS_parsed ))
+
+		if (( rc )); then
+			error "${func} ${check} failed: ${rc}"
+			result=1
+		else
+			std::define expected <<'EOF'
+__DEFINED__
+__DEFINED__
+EOF
+			if [[ "${response:-}" == "${expected}" ]]; then
+				info "${func} ${check}: okay"
+			else
+				error "${func} ${check}: failed"
+				info "Expected:"
+				output "${expected}"
+				info "Received:"
+				output "${response}"
+				result=1
+			fi
+		fi
+
+		exit ${result}
+	)
+	(( result += ${?} ))
+	# }}}
+
+	if (( result )); then
+		error "${FUNCNAME[0]##*_} failed test-suite"
+	else
+		info "${FUNCNAME[0]##*_} passed test-suite"
+	fi
+
+	# Don't stomp std_ERRNO
+	return ${result}
+} # parseargs::test # }}}
+
+function push::test() { # {{{
+	local -i rc=0 result=0
+	# Test-cases from https://github.com/vaeth/push/blob/71794c14a709d4ef2816d76db89c2b7f41a0b650/README
+
+	local response expected
+	local -a fargs=( "${@:-}" )
+
+	local func="std::push" check=""
+
+	# Example 1 # {{{
+	check="Example 1"
+	local foo
+	response="$(
+		set -e
+		std::push -c foo 'data with special symbols like ()"\' "'another arg'"
+		std::push foo further args
+		eval "printf '%s\\n' ${foo}"
+	)" 2>/dev/null
+	rc=${?}
+
+	if (( rc )); then
+		error "${func} ${check} failed: ${rc}"
+		result=1
+	else
+		std::define expected <<'EOF'
+data with special symbols like ()"\
+'another arg'
+further
+args
+EOF
+		if [[ "${response:-}" == "${expected}" ]]; then
+			info "${func} ${check}: okay"
+		else
+			error "${func} ${check}: failed"
+			info "Expected:"
+			output "${expected}"
+			info "Received:"
+			output "${response}"
+			result=1
+		fi
+	fi
+	unset foo
+	# }}}
+
+	# Example 2 # {{{
+	check="Example 2"
+	local args
+	set -- a1 a2 a3 a4 removeme
+	response="$(
+		set -e
+		std::push -c args || true # For 'set -e'
+		while [ ${#} -gt 1 ]
+		do
+			std::push args "${1}"
+			shift
+		done
+		eval "set -- ${args}"
+		echo "${*}"
+	)" 2>/dev/null
+	rc=${?}
+	set -- "${fargs[@]}"
+
+	if (( rc )); then
+		error "${func} ${check} failed: ${rc}"
+		result=1
+	else
+		std::define expected <<'EOF'
+a1 a2 a3 a4
+EOF
+		if [[ "${response:-}" == "${expected}" ]]; then
+			info "${func} ${check}: okay"
+		else
+			error "${func} ${check}: failed"
+			info "Expected:"
+			output "${expected}"
+			info "Received:"
+			output "${response}"
+			result=1
+		fi
+	fi
+	unset args
+	# }}}
+
+	# Example 3 # {{{
+	check="Example 3"
+	local files
+	set -- a1 " a2 " "'a3'" '"a4"' '<a5' '>a6'
+	response="$(
+		set -e
+		std::push -c files "${@}" && echo "su -c \"cat -- ${files}\""
+	)" 2>/dev/null
+	rc=${?}
+	set -- "${fargs[@]}"
+
+	if (( rc )); then
+		error "${func} ${check} failed: ${rc}"
+		result=1
+	else
+		std::define expected <<'EOF'
+su -c "cat -- a1 ' a2 ' \'a3\' '"a4"' '<a5' '>a6'"
+EOF
+		if [[ "${response:-}" == "${expected}" ]]; then
+			info "${func} ${check}: okay"
+		else
+			error "${func} ${check}: failed"
+			info "Expected:"
+			output "${expected}"
+			info "Received:"
+			output "${response}"
+			result=1
+		fi
+	fi
+	unset files
+	# }}}
+
+	# Example 4 # {{{
+	check="Example 4"
+	local v
+	set -- source~1 'source 2' "source '3'"
+	response="$(
+		set -e
+		std::push -c v cp -- "${@}" \~dest
+		printf '%s\n' "${v}"
+	)" 2>/dev/null
+	rc=${?}
+	set -- "${fargs[@]}"
+
+	if (( rc )); then
+		error "${func} ${check} failed: ${rc}"
+		result=1
+	else
+		std::define expected <<'EOF'
+cp -- source~1 'source 2' 'source '\'3\' '~dest'
+EOF
+		if [[ "${response:-}" == "${expected}" ]]; then
+			info "${func} ${check}: okay"
+		else
+			error "${func} ${check}: failed"
+			info "Expected:"
+			output "${expected}"
+			info "Received:"
+			output "${response}"
+			result=1
+		fi
+	fi
+	unset v
+	# }}}
+
+	# Example 5 # {{{
+	check="Example 5"
+	local data
+	response="$(
+		set -e
+
+		function donothing() {
+			:
+		}
+		function dosomething() {
+			std::push data "item"
+		}
+		std::push -c data || true # For 'set -e'
+		donothing
+		std::push data || echo 'nothing was pushed to $data in donothing'
+		dosomething
+		std::push data || echo 'nothing was pushed to $data in dosomething'
+	)" 2>/dev/null
+	rc=${?}
+	set -- "${fargs[@]}"
+
+	if (( rc )); then
+		error "${func} ${check} failed: ${rc}"
+		result=1
+	else
+		std::define expected <<'EOF'
+nothing was pushed to $data in donothing
+EOF
+		if [[ "${response:-}" == "${expected}" ]]; then
+			info "${func} ${check}: okay"
+		else
+			error "${func} ${check}: failed"
+			info "Expected:"
+			output "${expected}"
+			info "Received:"
+			output "${response}"
+			result=1
+		fi
+	fi
+	unset data
+	# }}}
+
+	if (( result )); then
+		error "${FUNCNAME[0]##*_} failed test-suite"
+	else
+		info "${FUNCNAME[0]##*_} passed test-suite"
+	fi
+
+	# Don't stomp std_ERRNO
+	return ${result}
+} # push::test # }}}
+
 # }}}
 
 function main() {
@@ -681,8 +1708,18 @@ function main() {
 		std_DEBUG=${debug}
 	fi
 
-	if grep -Eq ' (push|all) ' <<<" ${wanted} "; then
-		push::test "${@:-}" ; rc+=${?}
+	if grep -Eq ' (emktemp|all) ' <<<" ${wanted} "; then
+		emktemp::test "${@:-}" ; rc+=${?}
+		output
+	fi
+
+	if grep -Eq ' (http|all) ' <<<" ${wanted} "; then
+		http::test "${@:-}" ; rc+=${?}
+		output
+	fi
+
+	if grep -Eq ' (mktemp|all) ' <<<" ${wanted} "; then
+		mktemp::test "${@:-}" ; rc+=${?}
 		output
 	fi
 
@@ -691,8 +1728,8 @@ function main() {
 		output
 	fi
 
-	if grep -Eq ' (http|all) ' <<<" ${wanted} "; then
-		http::test "${@:-}" ; rc+=${?}
+	if grep -Eq ' (push|all) ' <<<" ${wanted} "; then
+		push::test "${@:-}" ; rc+=${?}
 		output
 	fi
 
@@ -702,7 +1739,7 @@ function main() {
 
 # Defined in stdlib.sh
 # shellcheck disable=SC2034
-std_USAGE="<parseargs|colour|http|all>"
+std_USAGE="<colour|emktemp|http|mktemp|parseargs|push|all>"
 
 main "${@:-}"
 

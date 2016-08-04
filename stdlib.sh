@@ -149,13 +149,21 @@ declare -i __STDLIB_SHLVL=${SHLVL:-1}
                              # std::parseargs to handle multi-element input and
                              # to return arrays (which is luckily non API-
                              # breaking)
-export   std_RELEASE="2.0.0" # std::inherit becomes the first function to be
+#export  std_RELEASE="2.0.0" # std::inherit becomes the first function to be
                              # available in multiple API versions
                              # std::wrap now appends a lower-case (optional)
                              # prefix to wrapped follow-on lines
                              # Many fixes for correct operation when inheriting
                              # stdlib from parent shell
                              # std::requires now works properly ;)
+export   std_RELEASE="2.0.1" # std::*mktemp now support '-directory' to cause
+                             # creation a temporary directory
+                             # std::parseargs can now handle defined parameters
+                             # with no value
+			     # TODO:
+                             # std::define is now slightly less efficient, but
+                             # is able to maintain blank input lines, and takes
+                             # additional steps to avoid unintended effects
 readonly std_RELEASE
 
 
@@ -619,27 +627,51 @@ function main() {
 # This function may be overridden
 #
 function __STDLIB_API_1_std::cleanup() { # {{{
+	# N.B.: 'rc' initially contains ${?}, not ${1}
 	local -i rc=${?}
-	[[ -n "${1:-}" ]] && (( ${1:-0} )) && rc=${1}; shift
 	local file
+
+	if [[ -n "${1:-}" ]]; then
+		if [[ "${1}" == '0' ]]; then
+			rc=${1}; shift
+		elif (( ${1} )); then
+			rc=${1}; shift
+		fi
+	fi
 
 	# Remove any STDLIB-generated temporary files and exit.
 
 	for file in "${__STDLIB_OWNED_FILES[@]:-}"; do
 		if [[ -n "${file:-}" && -e "${file}" ]]; then
-			if rm -f "${file}" >/dev/null 2>&1; then
+
+			# TODO: It would be nice to run stdlib.sh functions as
+			#       a dedicated unprivileged user by default, so
+			#       that cleanup couldn't be maliciously or even
+			#       accidentally used to cause system damage if
+			#       run by UID 0...
+
+			if [[ "$( readlink -e "${file}" )" == "/" ]]; then
+				die "Attempt made to cleanup/remove '/' - serious bug or malicious code suspected"
+			fi
+
+			if rmdir "${file}" >/dev/null 2>&1; then
+				(( std_DEBUG & 2 )) && debug "${FUNCNAME[0]##*_} succeeded removing empty directory '${file}'"
+			elif rm -f "${file}" >/dev/null 2>&1; then
 				(( std_DEBUG & 2 )) && debug "${FUNCNAME[0]##*_} succeeded removing file '${file}'"
+			elif rm -rf "${file}" >/dev/null 2>&1; then
+				(( std_DEBUG & 2 )) && debug "${FUNCNAME[0]##*_} succeeded removing non-empty file or directory '${file}'"
 			else
-				warn "${FUNCNAME[0]##*_} unable to remove file '${file}': ${?}"
+				warn "${FUNCNAME[0]##*_} unable to remove filesystem object '${file}': ${?}"
+
 				# We'd expect this to fail again, but tell us
 				# what happened.  This is arguably less correct
 				# than capturing the output in the first place,
 				# but the distinction is likely marginal...
-				rm -f "${file}"
+				error "$( rm -rv "${file}" 2>&1 )"
 				(( rc )) || (( rc++ ))
 			fi
 		else
-			(( std_DEBUG & 2 )) && [[ -n "${file:-}" ]] && debug "${FUNCNAME[0]##*_} unable to remove missing file '${file}'"
+			(( std_DEBUG & 2 )) && [[ -n "${file:-}" ]] && debug "${FUNCNAME[0]##*_} unable to remove missing object '${file}'"
 		fi
 	done
 	unset file
@@ -1299,11 +1331,11 @@ function __STDLIB_API_1_std::garbagecollect() { # {{{
 } # __STDLIB_API_1_std::garbagecollect # }}}
 
 function __STDLIB_API_1_std::mktemp() { # {{{
-	local -a tmpdir=() suffix=() files=()
+	local -a tmpdir=() suffix=() directory=() files=()
 	local -i namedargs=1
 
-	# Usage: std::mktemp [-tmpdir <directory>] [-suffix <extension>] _
-	#        [file ...]
+	# Usage: std::mktemp [-directory] [-tmpdir <directory>] _
+	#        [-suffix <extension>] [filename_component ...]
 	local std_PARSEARGS_parsed=0
 	eval "$( std::parseargs --single --permissive --var files -- "${@:-}" )"
 	(( std_PARSEARGS_parsed )) || {
@@ -1339,7 +1371,7 @@ function __STDLIB_API_1_std::mktemp() { # {{{
 	#
 	# ... and in typical fashion, MacOS has a BSD mktemp which offers
 	# fewer features.  In this case, no suffix is possible, and we can
-	# either specify a prefix (which will get 8 random characters appended)
+	# either specify a prefix (that will have 8 random characters appended)
 	# which will be placed into ${TMPDIR} with '-t', or provide a full path
 	# and template if no option is given.
 	#
@@ -1373,6 +1405,10 @@ function __STDLIB_API_1_std::mktemp() { # {{{
 			;;
 	esac
 
+	if [[ "${directory[*]:-}" == "__DEFINED__" ]]; then
+		opts="-d "
+	fi
+
 	if (( 0 == namedargs )); then
 		if [[ -n "${1:-}" && -d "${1}" ]]; then
 			tmpdir=( "${1}" )
@@ -1383,11 +1419,11 @@ function __STDLIB_API_1_std::mktemp() { # {{{
 		case ${standard} in
 			$__std_mktemp_standard_gnu)
 				# Note trailing space and quote...
-				opts="--tmpdir=\"${tmpdir[0]}\" \""
+				opts+="--tmpdir=\"${tmpdir[0]}\" \""
 				;;
 			$__std_mktemp_standard_legacy)
 				# Note lack of trailing space before quote...
-				opts="\"${tmpdir[0]}\"/\""
+				opts+="\"${tmpdir[0]}\"/\""
 				;;
 			$__std_mktemp_standard_bsd)
 				# There are two options here:
@@ -1397,7 +1433,7 @@ function __STDLIB_API_1_std::mktemp() { # {{{
 				# 'mktemp "${TMPDIR}"/file.XXXXXXXX' expands
 				# specified templates.
 				# Note lack of trailing space before quote...
-				opts="\"${tmpdir[0]}\"/\""
+				opts+="\"${tmpdir[0]}\"/\""
 				;;
 		esac
 	else
@@ -1405,11 +1441,11 @@ function __STDLIB_API_1_std::mktemp() { # {{{
 
 		case ${standard} in
 			$__std_mktemp_standard_bsd)
-				opts="\"${tmpdir[0]}\"/\""
+				opts+="\"${tmpdir[0]}\"/\""
 				;;
 			*)
 				# Note trailing space and quote...
-				opts="-t \""
+				opts+="-t \""
 				;;
 		esac
 	fi
@@ -1417,14 +1453,14 @@ function __STDLIB_API_1_std::mktemp() { # {{{
 	local -a __std_NEWFILES
 	local file name
 
-	[[ -n "${files[*]:-}" ]] || files=( "${NAME}" )
+	[[ -n "${files[*]:-}" ]] || files=( "${NAME%.sh}" )
 	for file in "${files[@]}"; do
 		name="${file}.XXXXXXXX${suffix[*]:+.${suffix[*]}}"
 
 		# Otherwise undocumented, **POTENTIALLY DANGEROUS**, configuration setting...
 		if [[ -n "${STDLIB_REUSE_TEMPFILES:-}" ]]; then
 			local filename
-			filename="$( find "${tmpdir[0]}" -mindepth 1 -maxdepth 1 -name "${NAME}.${file}.*" -print 2>/dev/null | tail -n 1 )"
+			filename="$( find "${tmpdir[0]}" -mindepth 1 -maxdepth 1 -name "${NAME%.sh}.${file}.*" -print 2>/dev/null | tail -n 1 )"
 
 			if [[ -n "${filename:-}" && -w "${filename}" ]]; then
 				[[ " ${__STDLIB_OWNED_FILES[*]} " =~ \ ${filename}\  ]] || \
@@ -1439,6 +1475,7 @@ function __STDLIB_API_1_std::mktemp() { # {{{
 			fi
 		fi
 
+		(( std_DEBUG & 2 )) && debug "Creating temporary object with 'mktemp ${opts}${name}\"'"
 		__std_NEWFILES+=(
 			"$( eval "mktemp ${opts}${name}\"" || {
 				error "${message}"
@@ -1473,10 +1510,11 @@ function __STDLIB_API_1_std::mktemp() { # {{{
 } # __STDLIB_API_1_std::mktemp # }}}
 
 function __STDLIB_API_1_std::emktemp() { # {{{
-	local -a var=() tmpdir=() suffix=() names=()
+	local -a var=() tmpdir=() suffix=() directory=() names=()
 
-	# Usage: std::emktemp -var <variable> [-tmpdir <directory>] _
-	#        [-suffix <extension>] [filename component ...]
+	# Usage: std::emktemp -var <variable> [-directory] _
+	#        [-tmpdir <directory>] [-suffix <extension>] _
+	#        [filename_component ...]
 	local std_PARSEARGS_parsed=0
 	eval "$( std::parseargs --single --permissive --var names -- "${@:-}" )"
 	if (( std_PARSEARGS_parsed )); then
@@ -1528,7 +1566,7 @@ function __STDLIB_API_1_std::emktemp() { # {{{
 	local -a files=() results=()
 	std_ERRNO=0
 
-	files=( $( eval "__STDLIB_API_1_std::mktemp ${tmpdir[0]:+-tmpdir "${tmpdir[*]}"} ${suffix[0]:+-suffix "${suffix[*]}"} ${*:-${$}}" ) )
+	files=( $( eval "__STDLIB_API_1_std::mktemp ${directory[0]:+-directory} ${tmpdir[0]:+-tmpdir "${tmpdir[*]}"} ${suffix[0]:+-suffix "${suffix[*]}"} ${*:-${NAME%.sh}}" ) )
 	rc=${?}
 
 	if (( rc )); then
@@ -2014,12 +2052,13 @@ function __STDLIB_API_1_std::define() { # {{{
 	# This is not the same variable previously declared to be an array...
 	# shellcheck disable=SC2178
 	local var="${1:-}" ; shift
+	local state ifs value
 
 	# Usage:
 	#
 	# std::define VARIABLE <<'EOF'
 	# heredoc content to be read into $VARIABLE without using 'cat'
-	# You can 'quote ""things how you like...
+	# You can 'quote ""things as you like...
 	# ... $( and this won't be executed )!
 	# EOF
 
@@ -2028,9 +2067,24 @@ function __STDLIB_API_1_std::define() { # {{{
 		return 1
 	}
 
+	state="$( set +o | grep 'noglob$' )"
+	set -f
+	ifs="${IFS:-}"
+	IFS=$'\n' # Loses blank lines :(
+	#IFS=''
+
 	# This is not the same variable previously declared to be an array...
 	# shellcheck disable=SC2128
-	IFS=$'\n' read -r -d '' "${var}"
+	read -r -d '' "${var}"
+
+	eval "${state}"
+	IFS="${ifs:-}"
+
+	#value="${!var}"
+	#value="${value//\'/\\\'}"
+	#value="${value//\"/\\\"}"
+	#value="${value%$'\n'}"
+	#eval "${var}='${value}'" # Correct trailing blank line when IFS unset
 
 	std_ERRNO=0
 
@@ -2577,6 +2631,7 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 	local -i std_PARSEARGS_onevalue=0 std_PARSEARGS_unrecok=0 std_PARSEARGS_rc=1
 
 	local std_PARSEARGS_unassigned_var="std_PARSEARGS_unassigned"
+	local std_PARSEARGS_unassigned_value="__DEFINED__"
 
 	local std_PARSEARGS_parsed=1
 
@@ -2625,6 +2680,9 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 	#
 	# Any values without an obvious associated variable name are saved as
 	# "std_PARSEARGS_unassigned"
+	#
+	# Any variable name which is specified but receives no values will be
+	# given the special placeholder value "__DEFINED__".
 	#
 	# Internal options:
 	#   --single     - Only store the value following a variable to that
@@ -2686,15 +2744,28 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 		done
 	fi
 	eval "local -a ${std_PARSEARGS_unassigned_var:-std_PARSEARGS_unassigned}=()"
-
 	std_PARSEARGS_arg="${std_PARSEARGS_unassigned_var}"
+
+	set -- "${@:-}" '-std_PARSEARGS_EOF'
 	while [[ -n "${1:-}" ]]; do
 		std_PARSEARGS_current="${1}" ; shift
 
 		(( 0 == ${#std_PARSEARGS_current} )) && continue
 
 		if [[ "${std_PARSEARGS_current:0:1}" == "-" ]]; then
+			if ! [[ "${std_PARSEARGS_arg}" == "${std_PARSEARGS_unassigned_var}" ]]; then
+				if [[ -z "${!std_PARSEARGS_arg[*]:-}" ]]; then
+					eval "${std_PARSEARGS_arg}+=( '${std_PARSEARGS_unassigned_value}' )"
+					if ! grep -Fqm 1 -- " ${std_PARSEARGS_arg} " <<<" ${std_PARSEARGS_results[*]:-} "; then # ` # <- Ubuntu syntax highlight fail
+						std_PARSEARGS_results+=( "${std_PARSEARGS_arg}" )
+					fi
+					std_PARSEARGS_rc=0
+				fi
+			fi
+
 			std_PARSEARGS_arg="${std_PARSEARGS_current:1}"
+
+			[[ "${std_PARSEARGS_arg}" == "std_PARSEARGS_EOF" ]] && break
 
 			# Not necessarily IEEE 1003.1-2001, but according to
 			# bash source...
@@ -2720,15 +2791,13 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 			fi
 		else
 			if [[ -z "${std_PARSEARGS_arg:-}" ]]; then
-				warn "${FUNCNAME[0]##*_}: Dropping argument '${std_PARSEARGS_current}'"
+				(( std_DEBUG & 2 )) && warn "${FUNCNAME[0]##*_}: Dropping argument '${std_PARSEARGS_current}'"
 				continue
 			fi
 
 			eval "${std_PARSEARGS_arg}+=( '${std_PARSEARGS_current}' )"
-			if [[ "${std_PARSEARGS_arg}" == "${std_PARSEARGS_unassigned_var}" ]]; then
-				if ! grep -Fqm 1 -- " ${std_PARSEARGS_arg} " <<<" ${std_PARSEARGS_results[*]:-} "; then # ` # <- Ubuntu syntax highlight fail
-					std_PARSEARGS_results+=( "${std_PARSEARGS_arg}" )
-				fi
+			if ! grep -Fqm 1 -- " ${std_PARSEARGS_arg} " <<<" ${std_PARSEARGS_results[*]:-} "; then # ` # <- Ubuntu syntax highlight fail
+				std_PARSEARGS_results+=( "${std_PARSEARGS_arg}" )
 			fi
 			if (( std_PARSEARGS_rc )); then
 				if (( std_PARSEARGS_unrecok )) || [[ "${std_PARSEARGS_arg}" != "${std_PARSEARGS_unassigned_var}" ]]; then
@@ -2739,17 +2808,17 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 		fi
 	done
 
-	if (( ! std_PARSEARGS_rc )); then
+	if ! (( std_PARSEARGS_rc )); then
 		for std_PARSEARGS_arg in "${std_PARSEARGS_results[@]:-}"; do
 			if [[ -n "${std_PARSEARGS_arg:-}" ]]; then
 				if declare -p "${std_PARSEARGS_arg}" >/dev/null 2>&1; then
 					respond "$( declare -p "${std_PARSEARGS_arg}" )"
 				else
-					warn "${FUNCNAME[0]##*_}: Variable '${std_PARSEARGS_arg}' exists but is empty"
+					(( std_DEBUG & 2 )) && warn "${FUNCNAME[0]##*_}: Variable '${std_PARSEARGS_arg}' exists but is empty"
 					std_PARSEARGS_rc=1
 				fi
 			else
-				warn "${FUNCNAME[0]##*_}: Unbound variable '${std_PARSEARGS_arg}'"
+				(( std_DEBUG & 2 )) && warn "${FUNCNAME[0]##*_}: Unbound variable '${std_PARSEARGS_arg}'"
 				std_PARSEARGS_rc=1
 			fi
 		done
