@@ -783,7 +783,8 @@ function __STDLIB_API_1_std::wrap() { # {{{
 	# N.B.: It may be necessary to 'export COLUMNS' before this
 	#       works - this variable isn't exported to scripts by
 	#       default, and is lost on invocation.
-	local -i columns=${COLUMNS:-$( tput cols 2>/dev/null )}
+	#local -i columns=${COLUMNS:-$( tput cols 2>/dev/null )}
+	local -i columns=${COLUMNS:-$( stty size --file /dev/stdin 2>/dev/null | cut -d' ' -f 2 )}
 	(( columns )) || columns=80
 
 	if [[ -n "${prefix:-}" ]]; then
@@ -2520,6 +2521,12 @@ function __STDLIB_API_1_std::getfilesection() { # {{{
 		std_ERRNO=$( errsymbol EENV )
 		return 1
 	}
+
+	if [[ "${section}" =~ ^\[.*\]$ ]]; then
+		section="${section#[}"
+		section="${section%[}"
+	fi
+	section="$( printf '%q' "${section}" )"
 
 	# By printing the line before setting 'output' to 1, we prevent the
 	# section header itself from being returned.
