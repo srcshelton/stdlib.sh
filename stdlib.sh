@@ -1,3 +1,5 @@
+#! /usr/bin/env bash
+#
 # Copyright 2013-2016 Stuart Shelton
 # Distributed under the terms of the GNU General Public License v2
 #
@@ -156,14 +158,11 @@ declare -i __STDLIB_SHLVL=${SHLVL:-1}
                              # Many fixes for correct operation when inheriting
                              # stdlib from parent shell
                              # std::requires now works properly ;)
-export   std_RELEASE="2.0.1" # std::*mktemp now support '-directory' to cause
+#export  std_RELEASE="2.0.1" # std::*mktemp now support '-directory' to cause
                              # creation a temporary directory
                              # std::parseargs can now handle defined parameters
                              # with no value
-			     # TODO:
-                             # std::define is now slightly less efficient, but
-                             # is able to maintain blank input lines, and takes
-                             # additional steps to avoid unintended effects
+export   std_RELEASE="2.0.2" # Make wrapping via std::wrap optional
 readonly std_RELEASE
 
 
@@ -225,6 +224,13 @@ EOC
 # STDLIB_WANT_MEMCACHED	- Load native memcached functions, requires presence of
 # 			- external '/usr/local/lib/memcached.sh' script;
 # STDLIB_WANT_COLOUR	- Enable coloured output;
+# STDLIB_WANT_WORDWRAP	- Set to zero to explicitly disable word-wrapping,
+#			  leave unset to word-wrap if the terminal width can be
+#			  determined, or set to one to explicitly force word-
+#			  wrapping - to 80 columns if no width can be
+#			  determined;
+#			  (Invoking 'export COLUMNS' prior to executing a
+#			   a script which in turn calls stdlib.sh may help)
 #
 # STDLIB_COLOUR_MAP	- Specify the path to an optional custom colour map
 # 			  file, defaulting to '/etc/stdlib/colour.map';
@@ -775,17 +781,43 @@ function __STDLIB_API_1_std::wrap() { # {{{
 	local prefix="${1:-}" ; shift
 	local text="${*:-}"
 
+	local -i wrap=$(( ${STDLIB_WANT_WORDWRAP:-1} ))
+
+	[[ -n "${prefix}" && -z "${text}" ]] && {
+		text="${prefix}"
+		prefix=""
+	}
+
 	[[ -n "${text:-}" ]] || {
 		std_ERRNO=$( errsymbol EARGS )
 		return 1
 	}
 
+	# It turns out that working out the width of the current terminal width
+	# is remarkably difficult, and differs between various implementations.
+	# 'tput cols' is fairly consistent in terms of which OS support it, but
+	# doesn't appear to provide a value under non-interactive use.  'stty'
+	# is able to output dimensions in a wider range of circumstances, but
+	# must be invoked as 'stty --file /dev/stdin' or 'stty -F /dev/stdin'
+	# on Linux, but 'stty -f /dev/stdin' on macOS (where the order of
+	# arguments is also significant).
+
 	# N.B.: It may be necessary to 'export COLUMNS' before this
-	#       works - this variable isn't exported to scripts by
-	#       default, and is lost on invocation.
-	#local -i columns=${COLUMNS:-$( tput cols 2>/dev/null )}
-	local -i columns=${COLUMNS:-$( stty size --file /dev/stdin 2>/dev/null | cut -d' ' -f 2 )}
-	(( columns )) || columns=80
+	#       works - this variable isn't exported to scripts by default, and
+	#       is lost on invocation.
+
+	#local -i columns=${COLUMNS:-$( stty size --file /dev/stdin 2>/dev/null | cut -d' ' -f 2 )}
+	local -i columns=${COLUMNS:-$( tput cols 2>/dev/null )}
+	if ! (( columns )); then
+		# If invoked with a specific indication that word-wrapping is
+		# required, then wrap to 80 columns - otherwise, don't wrap at
+		# all...
+		if [[ -z "${STDLIB_WANT_WORDWRAP:-}" ]]; then
+			wrap=0
+		else
+			columns=80
+		fi
+	fi
 
 	if [[ -n "${prefix:-}" ]]; then
 		# Attempt to sanitise input to sed, which can break in many
@@ -793,7 +825,7 @@ function __STDLIB_API_1_std::wrap() { # {{{
 		prefix="$( LC_ALL=C sed -e 's/[^a-zA-Z0-9,._+@%/-]/\\&/g; 1{$s/^$/""/}; 1!s/^/"/; $!s/$/"/' <<<"${prefix}" )"
 		local -l lprefix="${prefix}"
 
-		if (( columns > ( ${#prefix} + 2 ) )); then
+		if (( wrap )) && (( columns > ( ${#prefix} + 2 ) )); then
 			  output "${text}" \
 			| fold -sw "$(( columns - ( ${#prefix} + 1 ) ))" \
 			| sed "s|^|${lprefix} | ; 1{s|^${lprefix}|${prefix}|}"
@@ -802,7 +834,7 @@ function __STDLIB_API_1_std::wrap() { # {{{
 			| sed "s|^|${prefix} | ; 1{s|^${lprefix}|${prefix}|}"
 		fi
 	else
-		if (( columns > 1 )); then
+		if (( wrap )) && (( columns > 1 )); then
 			  output "${text}" \
 			| fold -sw "$(( columns - 1))"
 		else
@@ -2062,30 +2094,32 @@ function __STDLIB_API_1_std::define() { # {{{
 	# You can 'quote ""things as you like...
 	# ... $( and this won't be executed )!
 	# EOF
+	#
+	# Please note that leading and trailing spaces are eaten by bash!  In
+	# order to handle these cases, please add a leading and/or trailing
+	# guard sequence - for implementation details, please see the parseargs
+	# tests in stdlib's test.sh where the character 'x' is used for such a
+	# purpose...
 
 	[[ -n "${var:-}" ]] || {
 		std_ERRNO=$( errsymbol EARGS )
 		return 1
 	}
 
-	state="$( set +o | grep 'noglob$' )"
+	# Don't expand asterisks, and don't exit when read returns non-zero on
+	# hitting EOF...
+	state="$( set +o | grep -E '(noglob|errexit)$' )"
 	set -f
+	set +e
 	ifs="${IFS:-}"
-	IFS=$'\n' # Loses blank lines :(
-	#IFS=''
+	IFS=$'\n' # Loses leading and trailing blank lines :(
 
 	# This is not the same variable previously declared to be an array...
 	# shellcheck disable=SC2128
 	read -r -d '' "${var}"
 
-	eval "${state}"
 	IFS="${ifs:-}"
-
-	#value="${!var}"
-	#value="${value//\'/\\\'}"
-	#value="${value//\"/\\\"}"
-	#value="${value%$'\n'}"
-	#eval "${var}='${value}'" # Correct trailing blank line when IFS unset
+	eval "${state}"
 
 	std_ERRNO=0
 

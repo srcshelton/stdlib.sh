@@ -74,7 +74,7 @@ the absolute value of the return code.
 It is suggested that all variables be enclosed within braces, and also
 double-quoted unless defined as a numeric value with `local -i` or
 `declare -i`.  The exception to this is where a variable is used in place of a
-comment, where braces should be omitted in order to differentiate commands from
+command, where braces should be omitted in order to differentiate commands from
 values.
 
 ```bash
@@ -91,46 +91,46 @@ $DEBUG_RM "${files[@]}"
 Functions
 =========
 
-| Function                | Description                                                                                    |
-|-------------------------|------------------------------------------------------------------------------------------------|
-| `output()`              | An alias for `echo`, used to indicate user-visible output                                      |
-| `respond()`             | An alias for `echo`, used to indicate response feedback                                        |
-| `std::cleanup()`        | Remove any temporary files created by the `mktemp` functions or added by `std::garbagecollect` |
-| `std::usage-message()`  | Provide custom help-text where `${std_USAGE}` is not sufficient                                |
-| `std::usage()`          | Output help text from `${std_USAGE}` or std::usage-message()                                   |
-| `std::wrap()`           | Format text to wrap to the width of the console at a word-end - N.B. Requires 'export COLUMNS' |
-| `std::log()`            | Output text to console, file, or syslog                                                        |
-| `std::colour()`         | Optionally determine intended text colour from string prefix, and return text with ANSI escapes|
-| `die()`                 | Output text in a standardised format and exit with a failure code                              |
-| `error()`               | Output text in a standardised format                                                           |
-| `warn()`                | Output text in a standardised format                                                           |
-| `note()`                | Output text in a standardised format                                                           |
-| `notice()`              | Output text in a standardised format                                                           |
-| `info()`                | Output text in a standardised format                                                           |
-| `debug()`               | Output text in a standardised format                                                           |
-| `symerror()`            | errno: Provide symbol name (such as '`EERROR`') for specified code                             |
-| `errsymbol()`           | errno: Provide code for specified symbol                                                       |
-| `strerror()`            | errno: Provide description string for most recent or specified code                            |
-| `std::garbagecollect()` | Add additional files for automatic removal on exit                                             |
-| `std::mktemp()`         | OS-neutral standard `mktemp(1)` replacement, with garbage collection                           |
-| `std::emktemp()`        | Enhanced `mktemp(1)` replacemnt with improved syntax                                           |
-| `std::push()`           | `Push()` implementation - see Martin Väth's original [here](https://github.com/vaeth/push)     |
-| `std::readlink()`       | Basic OS-neutral `readlink(1)` stand-in                                                        |
-| `std::inherit`          | Document the use of global variables                                                           |
-| `std::define()`         | Improved HEREDOC support, without the need to invoke `cat`                                     |
-| `std::formatlist()`     | Return an English-formatted list with Oxford comma                                             |
-| `std::vcmp()`           | Compare two specified versions, or output a list of versions and succeed if the list was sorted|
-| `std::requires()`       | Declare script command requirements/dependencies                                               |
-| `std::capture()`        | Capture the output- or error- stream of a command                                              |
-| `std::ensure()`         | Exit with a specified error message if a command fails                                         |
-| `std::silence()`        | Execute a command and drop all output (e.g. `>/dev/null 2>&1`)                                 |
-| `std::wordsplit()`      | Return each whitespace-separated element from the (quoted) input, without unexpected globbing  |
-| `std::findfile()`       | Given an application name, file name, and default directory find a likely data file            |
-| `std::getfilesection()` | Retrieve a single section from a Windows-style .ini file with square-bracketed section titles  |
-| `std::parseargs()`      | Allow functions to accept named parameters with only minor code-changes                        |
-| `std::configure()`      | Export variables containing the standard system paths as used by `configure` scripts           |
-| `std::http::squash()`   | Map HTTP response codes (100-599) down to shell return codes (0-255) by squashing unused values|
-| `std::http::expand()`   | Map shell return codes (0-255) back up to HTTP response codes (100-599)                        |
+| Function                | Description                                                                                       |
+|-------------------------|---------------------------------------------------------------------------------------------------|
+| `output()`              | An alias for `echo`, used to indicate user-visible output                                         |
+| `respond()`             | An alias for `echo`, used to indicate response feedback                                           |
+| `std::cleanup()`        | Remove any temporary files created by the `mktemp` functions or added by `std::garbagecollect`    |
+| `std::usage-message()`  | Provide custom help-text where `${std_USAGE}` is not sufficient                                   |
+| `std::usage()`          | Output help text from `${std_USAGE}` or std::usage-message()                                      |
+| `std::wrap()`           | Format text to wrap to the width of the console at a word-end - N.B. May require 'export COLUMNS' |
+| `std::log()`            | Output text to console, file, or syslog                                                           |
+| `std::colour()`         | Optionally determine intended text colour from string prefix, and return text with ANSI escapes   |
+| `die()`                 | Output text in a standardised format and exit with a failure code                                 |
+| `error()`               | Output text in a standardised format                                                              |
+| `warn()`                | Output text in a standardised format                                                              |
+| `note()`                | Output text in a standardised format                                                              |
+| `notice()`              | Output text in a standardised format                                                              |
+| `info()`                | Output text in a standardised format                                                              |
+| `debug()`               | Output text in a standardised format                                                              |
+| `symerror()`            | errno: Provide symbol name (such as '`EERROR`') for specified code                                |
+| `errsymbol()`           | errno: Provide code for specified symbol                                                          |
+| `strerror()`            | errno: Provide description string for most recent or specified code                               |
+| `std::garbagecollect()` | Add additional files for automatic removal on exit                                                |
+| `std::mktemp()`         | OS-neutral standard `mktemp(1)` replacement, with garbage collection                              |
+| `std::emktemp()`        | Enhanced `mktemp(1)` replacemnt with improved syntax                                              |
+| `std::push()`           | `Push()` implementation - see Martin Väth's original [here](https://github.com/vaeth/push)        |
+| `std::readlink()`       | Basic OS-neutral `readlink(1)` stand-in                                                           |
+| `std::inherit`          | Document the use of global variables                                                              |
+| `std::define()`         | Improved HEREDOC support, without the need to invoke `cat`                                        |
+| `std::formatlist()`     | Return an English-formatted list with Oxford comma                                                |
+| `std::vcmp()`           | Compare two specified versions, or output a list of versions and succeed if the list was sorted   |
+| `std::requires()`       | Declare script command requirements/dependencies                                                  |
+| `std::capture()`        | Capture the output- or error- stream of a command                                                 |
+| `std::ensure()`         | Exit with a specified error message if a command fails                                            |
+| `std::silence()`        | Execute a command and drop all output (e.g. `>/dev/null 2>&1`)                                    |
+| `std::wordsplit()`      | Return each whitespace-separated element from the (quoted) input, without unexpected globbing     |
+| `std::findfile()`       | Given an application name, file name, and default directory find a likely data file               |
+| `std::getfilesection()` | Retrieve a single section from a Windows-style .ini file with square-bracketed section titles     |
+| `std::parseargs()`      | Allow functions to accept named parameters with only minor code-changes                           |
+| `std::configure()`      | Export variables containing the standard system paths as used by `configure` scripts              |
+| `std::http::squash()`   | Map HTTP response codes (100-599) down to shell return codes (0-255) by squashing unused values   |
+| `std::http::expand()`   | Map shell return codes (0-255) back up to HTTP response codes (100-599)                           |
 
 Configuration Files
 ===================

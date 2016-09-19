@@ -36,7 +36,7 @@ done
 # N.B. The shellcheck 'source' option is only valid with shellcheck 0.4.0 and
 #      later...
 #
-# shellcheck disable=SC2015
+# shellcheck disable=SC1091,SC2015
 # shellcheck source=stdlib.sh
 [[ -r "${std_LIBPATH}/${std_LIB}" ]] && source "${std_LIBPATH}/${std_LIB}" || {
 	echo >&2 "FATAL:  Unable to source ${std_LIB} functions"
@@ -60,13 +60,14 @@ done
 #
 function emktemp::test() { # {{{
 	local tempfile
-	local -i rc=0 result=0
+	local -i result=0
 
-	local func="std::emktemp" check=""
+	local func="std::emktemp"
 
 	# Test 1 # {{{
 	(
-		check="Test 1"
+		local check="Test 1"
+		local -i rc=0
 
 		std::emktemp tempfile
 		debug "${func} created file '${tempfile:-}' with no arguments"
@@ -100,7 +101,8 @@ function emktemp::test() { # {{{
 
 	# Test 2 # {{{
 	(
-		check="Test 2"
+		local check="Test 2"
+		local -i rc=0
 
 		std::emktemp tempfile "${$}"
 		debug "${func} created file '${tempfile:-}' with template '${$}'"
@@ -134,7 +136,8 @@ function emktemp::test() { # {{{
 
 	# Test 3 # {{{
 	(
-		check="Test 3"
+		local check="Test 3"
+		local -i rc=0
 
 		std::emktemp -var tempfile -suffix "${$}"
 		debug "${func} created file '${tempfile:-}' with suffix '${$}'"
@@ -168,7 +171,8 @@ function emktemp::test() { # {{{
 
 	# Test 4 # {{{
 	(
-		check="Test 4"
+		local check="Test 4"
+		local -i rc=0
 
 		mkdir "${TMPDIR:-/tmp}"/stdlib-"${NAME}" || die "Cannot mkdir('${TMPDIR:-/tmp}/stdlib-${NAME}')"
 
@@ -206,7 +210,8 @@ function emktemp::test() { # {{{
 
 	# Test 5 # {{{
 	(
-		check="Test 5"
+		local check="Test 5"
+		local -i rc=0
 
 		std::emktemp -var tempfile -suffix "${$}" -directory
 		debug "${func} created directory '${tempfile:-}' with suffix '${$}'"
@@ -240,7 +245,8 @@ function emktemp::test() { # {{{
 
 	# Test 6 # {{{
 	(
-		check="Test 6"
+		local check="Test 6"
+		local -i rc=0
 
 		mkdir "${TMPDIR:-/tmp}"/stdlib-"${NAME}" || die "Cannot mkdir('${TMPDIR:-/tmp}/stdlib-${NAME}')"
 
@@ -417,9 +423,9 @@ function http::test() { # {{{
 
 function mktemp::test() { # {{{
 	local tempfile
-	local -i rc=0 result=0
+	local -i result=0
 
-	local func="std::mktemp" check=""
+	local func="std::mktemp"
 
 	if [[ -e "${TMPDIR:-/tmp}"/stdlib-"${NAME}" ]]; then
 		error "Cannot run test-suite if filesystem object '${TMPDIR:-/tmp}/stdlib-${NAME}' exists"
@@ -428,8 +434,8 @@ function mktemp::test() { # {{{
 
 	# Test 1 # {{{
 	(
-		check="Test 1"
-		rc=0
+		local check="Test 1"
+		local -i rc=0
 
 		tempfile="$( std::mktemp )"
 		debug "${func} created file '${tempfile:-}' with no arguments"
@@ -464,7 +470,8 @@ function mktemp::test() { # {{{
 
 	# Test 2 # {{{
 	(
-		check="Test 2"
+		local check="Test 2"
+		local -i rc=0
 
 		tempfile="$( std::mktemp "stdlib-${NAME}" )"
 		debug "${func} created file '${tempfile:-}' with template 'stdlib-${NAME}'"
@@ -499,7 +506,8 @@ function mktemp::test() { # {{{
 
 	# Test 3 # {{{
 	(
-		check="Test 3"
+		local check="Test 3"
+		local -i rc=0
 
 		tempfile="$( std::mktemp -suffix "${$}" "stdlib-${NAME}" )"
 		debug "${func} created file '${tempfile:-}' with suffix '${$}' and template 'stdlib-${NAME}'"
@@ -534,7 +542,8 @@ function mktemp::test() { # {{{
 
 	# Test 4 # {{{
 	(
-		check="Test 4"
+		local check="Test 4"
+		local -i rc=0
 
 		mkdir "${TMPDIR:-/tmp}"/stdlib-"${NAME}" || die "Cannot mkdir('${TMPDIR:-/tmp}/stdlib-${NAME}')"
 
@@ -573,7 +582,8 @@ function mktemp::test() { # {{{
 
 	# Test 5 # {{{
 	(
-		check="Test 5"
+		local check="Test 5"
+		local -i rc=0
 
 		#local -i std_debug="${std_DEBUG}"
 		#std_DEBUG=2
@@ -611,7 +621,8 @@ function mktemp::test() { # {{{
 
 	# Test 6 # {{{
 	(
-		check="Test 6"
+		local check="Test 6"
+		local -i rc=0
 
 		mkdir "${TMPDIR:-/tmp}"/stdlib-"${NAME}" || die "Cannot mkdir('${TMPDIR:-/tmp}/stdlib-${NAME}')"
 
@@ -751,7 +762,7 @@ function output::test() { # {{{
 
 function parseargs::test() { # {{{
 	local response expected item1 item2 item3 unknown
-	local -i rc=0 std_PARSEARGS_parsed=0 result=0
+	local -i std_PARSEARGS_parsed=0 result=0
 	local -a args
 
 	# Clear any arguments we were called with...
@@ -759,12 +770,12 @@ function parseargs::test() { # {{{
 		shift
 	done
 
-	local func="std::parseargs" check=""
+	local func="std::parseargs"
 
 	# Test 1 # {{{
 	(
-		check="Test 1"
-		result=0
+		local check="Test 1"
+		local -i rc=0 testresult=0
 
 		args=( -item1 a -item2 b -item3 c )
 		(( std_DEBUG )) && info "Stripping arguments from '${args[*]}' ..."
@@ -772,10 +783,12 @@ function parseargs::test() { # {{{
 		(( std_DEBUG )) && debug "$( std::parseargs --strip -- "${args[@]}" )"
 		eval "set -- '$( std::parseargs --strip -- "${args[@]}" )'"
 		response="$(
+			echo "x"
 			echo "${item1[*]:-}"
 			echo "${item2[*]:-}"
 			echo "${item3[*]:-}"
 			echo "${*:-}"
+			echo "x"
 		)"
 		rc=${?}
 		if (( std_DEBUG )); then
@@ -795,29 +808,31 @@ function parseargs::test() { # {{{
 
 		if (( rc )); then
 			error "${func} ${check} failed: ${rc}"
-			result=1
+			testresult=1
 		else
 			std::define expected <<'EOF'
+x
 
 
 
 a
 b
 c
+x
 EOF
 			if [[ "${response:-}" == "${expected}" ]]; then
 				info "${func} ${check}: okay"
 			else
 				error "${func} ${check}: failed"
 				info "Expected:"
-				output "${expected}"
+				output "$( grep -v '^x$' <<<"${expected}" )"
 				info "Received:"
-				output "${response}"
-				result=1
+				output "$( grep -v '^x$' <<<"${response}" )"
+				testresult=1
 			fi
 		fi
 
-		exit ${result}
+		exit ${testresult}
 	)
 	(( result += ${?} ))
 	# }}}
@@ -825,8 +840,8 @@ EOF
 	#output "\n"
 	# Test 2 # {{{
 	(
-		check="Test 2"
-		result=0
+		local check="Test 2"
+		local -i rc=0 testresult=0
 
 		args=( -item1 a b -item2 c d -item3 e )
 		(( std_DEBUG )) && info "Stripping arguments from '${args[*]}' ..."
@@ -834,10 +849,12 @@ EOF
 		(( std_DEBUG )) && debug "$( std::parseargs --strip -- "${args[@]}" )"
 		eval "set -- '$( std::parseargs --strip -- "${args[@]}" )'"
 		response="$(
+			echo "x"
 			echo "${item1[*]:-}"
 			echo "${item2[*]:-}"
 			echo "${item3[*]:-}"
 			echo "${*:-}"
+			echo "x"
 		)"
 		rc=${?}
 		if (( std_DEBUG )); then
@@ -857,9 +874,10 @@ EOF
 
 		if (( rc )); then
 			error "${func} ${check} failed: ${rc}"
-			result=1
+			testresult=1
 		else
 			std::define expected <<'EOF'
+x
 
 
 
@@ -868,20 +886,21 @@ b
 c
 d
 e
+x
 EOF
 			if [[ "${response:-}" == "${expected}" ]]; then
 				info "${func} ${check}: okay"
 			else
 				error "${func} ${check}: failed"
 				info "Expected:"
-				output "${expected}"
+				output "$( grep -v '^x$' <<<"${expected}" )"
 				info "Received:"
-				output "${response}"
-				result=1
+				output "$( grep -v '^x$' <<<"${response}" )"
+				testresult=1
 			fi
 		fi
 
-		exit ${result}
+		exit ${testresult}
 	)
 	(( result += ${?} ))
 	# }}}
@@ -889,8 +908,8 @@ EOF
 	#output "\n"
 	# Test 3 # {{{
 	(
-		check="Test 3"
-		result=0
+		local check="Test 3"
+		local -i rc=0 testresult=0
 
 		args=( -item1 a -item2 b -item3 c )
 		(( std_DEBUG )) && info "Argument-parsing '${args[*]}' ..."
@@ -898,10 +917,12 @@ EOF
 		(( std_DEBUG )) && debug "$( std::parseargs --single --permissive --var unknown -- "${args[@]}" )"
 		eval "$( std::parseargs --single --permissive --var unknown -- "${args[@]}" )"
 		response="$(
+			echo "x"
 			echo "${item1[*]:-}"
 			echo "${item2[*]:-}"
 			echo "${item3[*]:-}"
 			echo "${unknown[*]:-}"
+			echo "x"
 		)"
 		rc=${?}
 		if (( std_DEBUG )); then
@@ -920,26 +941,29 @@ EOF
 
 		if (( rc )); then
 			error "${func} ${check} failed: ${rc}"
-			result=1
+			testresult=1
 		else
 			std::define expected <<'EOF'
+x
 a
 b
 c
+
+x
 EOF
 			if [[ "${response:-}" == "${expected}" ]]; then
 				info "${func} ${check}: okay"
 			else
 				error "${func} ${check}: failed"
 				info "Expected:"
-				output "${expected}"
+				output "$( grep -v '^x$' <<<"${expected}" )"
 				info "Received:"
-				output "${response}"
-				result=1
+				output "$( grep -v '^x$' <<<"${response}" )"
+				testresult=1
 			fi
 		fi
 
-		exit ${result}
+		exit ${testresult}
 	)
 	(( result += ${?} ))
 	# }}}
@@ -947,8 +971,8 @@ EOF
 	#output "\n"
 	# Test 4 # {{{
 	(
-		check="Test 4"
-		result=0
+		local check="Test 4"
+		local -i rc=0 testresult=0
 
 		args=( -item1 a b -item2 c d -item3 e )
 		(( std_DEBUG )) && info "Argument-parsing '${args[*]}' with --single ..."
@@ -956,10 +980,12 @@ EOF
 		(( std_DEBUG )) && debug "$( std::parseargs --single --permissive --var unknown -- "${args[@]}" )"
 		eval "$( std::parseargs --single --permissive --var unknown -- "${args[@]}" )"
 		response="$(
+			echo "x"
 			echo "${item1[*]:-}"
 			echo "${item2[*]:-}"
 			echo "${item3[*]:-}"
 			echo "${unknown[*]:-}"
+			echo "x"
 		)"
 		rc=${?}
 		if (( std_DEBUG )); then
@@ -980,27 +1006,29 @@ EOF
 
 		if (( rc )); then
 			error "${func} ${check} failed: ${rc}"
-			result=1
+			testresult=1
 		else
 			std::define expected <<'EOF'
+x
 a
 c
 e
 b d
+x
 EOF
 			if [[ "${response:-}" == "${expected}" ]]; then
 				info "${func} ${check}: okay"
 			else
 				error "${func} ${check}: failed"
 				info "Expected:"
-				output "${expected}"
+				output "$( grep -v '^x$' <<<"${expected}" )"
 				info "Received:"
-				output "${response}"
-				result=1
+				output "$( grep -v '^x$' <<<"${response}" )"
+				testresult=1
 			fi
 		fi
 
-		exit ${result}
+		exit ${testresult}
 	)
 	(( result += ${?} ))
 	# }}}
@@ -1008,8 +1036,8 @@ EOF
 	#output "\n"
 	# Test 5 # {{{
 	(
-		check="Test 5"
-		result=0
+		local check="Test 5"
+		local -i rc=0 testresult=0
 
 		args=( -item1 a b -item2 c d -item3 e )
 		(( std_DEBUG )) && info "Argument-parsing '${args[*]}' without --single ..."
@@ -1017,10 +1045,12 @@ EOF
 		(( std_DEBUG )) && debug "$( std::parseargs --permissive --var unknown -- "${args[@]}" )"
 		eval "$( std::parseargs --permissive --var unknown -- "${args[@]}" )"
 		response="$(
+			echo "x"
 			echo "${item1[*]:-}"
 			echo "${item2[*]:-}"
 			echo "${item3[*]:-}"
 			echo "${unknown[*]:-}"
+			echo "x"
 		)"
 		rc=${?}
 		if (( std_DEBUG )); then
@@ -1041,26 +1071,29 @@ EOF
 
 		if (( rc )); then
 			error "${func} ${check} failed: ${rc}"
-			result=1
+			testresult=1
 		else
 			std::define expected <<'EOF'
+x
 a b
 c d
 e
+
+x
 EOF
 			if [[ "${response:-}" == "${expected}" ]]; then
 				info "${func} ${check}: okay"
 			else
 				error "${func} ${check}: failed"
 				info "Expected:"
-				output "${expected}"
+				output "$( grep -v '^x$' <<<"${expected}" )"
 				info "Received:"
-				output "${response}"
-				result=1
+				output "$( grep -v '^x$' <<<"${response}" )"
+				testresult=1
 			fi
 		fi
 
-		exit ${result}
+		exit ${testresult}
 	)
 	(( result += ${?} ))
 
@@ -1069,8 +1102,8 @@ EOF
 	#output "\n"
 	# Test 6 # {{{
 	(
-		check="Test 6"
-		result=0
+		local check="Test 6"
+		local -i rc=0 testresult=0
 
 		args=( -item1 "a b" c -item2 d "e f" -item3 "g h" "i j" )
 		(( std_DEBUG )) && info "Argument-parsing '${args[*]}' without --single ..."
@@ -1078,6 +1111,7 @@ EOF
 		(( std_DEBUG )) && debug "$( std::parseargs --permissive --var unknown -- "${args[@]}" )"
 		eval "$( std::parseargs --permissive --var unknown -- "${args[@]}" )"
 		response="$(
+			echo "x"
 			echo "${item1[0]:-}"
 			echo "${item1[1]:-}"
 			echo "${item2[0]:-}"
@@ -1085,6 +1119,7 @@ EOF
 			echo "${item3[0]:-}"
 			echo "${item3[1]:-}"
 			echo "${unknown[*]:-}"
+			echo "x"
 		)"
 		rc=${?}
 		if (( std_DEBUG )); then
@@ -1105,29 +1140,32 @@ EOF
 
 		if (( rc )); then
 			error "${func} ${check} failed: ${rc}"
-			result=1
+			testresult=1
 		else
 			std::define expected <<'EOF'
+x
 a b
 c
 d
 e f
 g h
 i j
+
+x
 EOF
 			if [[ "${response:-}" == "${expected}" ]]; then
 				info "${func} ${check}: okay"
 			else
 				error "${func} ${check}: failed"
 				info "Expected:"
-				output "${expected}"
+				output "$( grep -v '^x$' <<<"${expected}" )"
 				info "Received:"
-				output "${response}"
-				result=1
+				output "$( grep -v '^x$' <<<"${response}" )"
+				testresult=1
 			fi
 		fi
 
-		exit ${result}
+		exit ${testresult}
 	)
 	(( result += ${?} ))
 	# }}}
@@ -1135,8 +1173,8 @@ EOF
 	#output "\n"
 	# Test 7 # {{{
 	(
-		check="Test 7"
-		result=0
+		local check="Test 7"
+		local -i rc=0 testresult=0
 
 		args=( a )
 		(( std_DEBUG )) && info "Argument-parsing '${args[*]}' ..."
@@ -1144,10 +1182,12 @@ EOF
 		(( std_DEBUG )) && debug "$( std::parseargs --permissive --var unknown -- "${args[@]}" )"
 		eval "$( std::parseargs --permissive --var unknown -- "${args[@]}" )"
 		response="$(
+			echo "x"
 			echo "${item1[*]:-}"
 			echo "${item2[*]:-}"
 			echo "${item3[*]:-}"
 			echo "${unknown[*]:-}"
+			echo "x"
 		)"
 		rc=${?}
 		if (( std_DEBUG )); then
@@ -1165,27 +1205,29 @@ EOF
 
 		if (( rc )); then
 			error "${func} ${check} failed: ${rc}"
-			result=1
+			testresult=1
 		else
 			std::define expected <<'EOF'
+x
 
 
 
 a
+x
 EOF
 			if [[ "${response:-}" == "${expected}" ]]; then
 				info "${func} ${check}: okay"
 			else
 				error "${func} ${check}: failed"
 				info "Expected:"
-				output "${expected}"
+				output "$( grep -v '^x$' <<<"${expected}" )"
 				info "Received:"
-				output "${response}"
-				result=1
+				output "$( grep -v '^x$' <<<"${response}" )"
+				testresult=1
 			fi
 		fi
 
-		exit ${result}
+		exit ${testresult}
 	)
 	(( result += ${?} ))
 
@@ -1195,8 +1237,8 @@ EOF
 	std::colour -type warn -colour red "WARN:   Test 8 expected failure"
 	# Test 8 # {{{
 	(
-		check="Test 8"
-		result=0
+		local check="Test 8"
+		local -i rc=0 testresult=0
 
 		args=()
 		(( std_DEBUG )) && info "Argument-parsing '${args[*]:-}' ..."
@@ -1204,10 +1246,12 @@ EOF
 		(( std_DEBUG )) && debug "$( std::parseargs --permissive --var unknown -- "${args[@]:-}" )"
 		eval "$( std::parseargs --permissive --var unknown -- "${args[@]:-}" )"
 		response="$(
+			echo "x"
 			echo "${item1[*]:-}"
 			echo "${item2[*]:-}"
 			echo "${item3[*]:-}"
 			echo "${unknown[*]:-}"
+			echo "x"
 		)"
 		rc=${?}
 		if (( std_DEBUG )); then
@@ -1225,9 +1269,15 @@ EOF
 
 		if (( rc )); then
 			info "${func} ${check} failed: ${rc}"
-			#result=1
+			#testresult=1
 		#else
 			std::define expected <<'EOF'
+x
+
+
+
+
+x
 EOF
 			if [[ "${response:-}" == "${expected}" ]]; then
 				#info "${func} ${check}: okay"
@@ -1235,17 +1285,17 @@ EOF
 			else
 				error "${func} ${check}: failed"
 				info "Expected:"
-				output "${expected}"
+				output "$( grep -v '^x$' <<<"${expected}" )"
 				info "Received:"
-				output "${response}"
-				#result=1
+				output "$( grep -v '^x$' <<<"${response}" )"
+				#testresult=1
 			fi
 		# Expected failure
 		else
-			result=1
+			testresult=1
 		fi
 
-		exit ${result}
+		exit ${testresult}
 	)
 	(( result += ${?} ))
 	# }}}
@@ -1253,8 +1303,8 @@ EOF
 	std::colour -type warn -colour red "WARN:   Test 9 expected failure (without --permissive):"
 	# Test 9 # {{{
 	(
-		check="Test 9"
-		result=0
+		local check="Test 9"
+		local -i rc=0 testresult=0
 
 		args=( a )
 		(( std_DEBUG )) && info "Argument-parsing '${args[*]}' ..."
@@ -1262,10 +1312,12 @@ EOF
 		(( std_DEBUG )) && debug "$( std::parseargs --var unknown -- "${args[@]}" )"
 		eval "$( std::parseargs --var unknown -- "${args[@]}" )"
 		response="$(
+			echo "x"
 			echo "${item1[*]:-}"
 			echo "${item2[*]:-}"
 			echo "${item3[*]:-}"
 			echo "${unknown[*]:-}"
+			echo "x"
 		)"
 		rc=${?}
 		if (( std_DEBUG )); then
@@ -1283,9 +1335,15 @@ EOF
 
 		if (( rc )); then
 			info "${func} ${check} failed: ${rc}"
-			#result=1
+			#testresult=1
 		#else
 			std::define expected <<'EOF'
+x
+
+
+
+
+x
 EOF
 			if [[ "${response:-}" == "${expected}" ]]; then
 				#info "${func} ${check}: okay"
@@ -1293,17 +1351,17 @@ EOF
 			else
 				error "${func} ${check}: failed"
 				info "Expected:"
-				output "${expected}"
+				output "$( grep -v '^x$' <<<"${expected}" )"
 				info "Received:"
-				output "${response}"
-				#result=1
+				output "$( grep -v '^x$' <<<"${response}" )"
+				#testresult=1
 			fi
 		# Expected failure
 		else
-			result=1
+			testresult=1
 		fi
 
-		exit ${result}
+		exit ${testresult}
 	)
 	(( result += ${?} ))
 	# }}}
@@ -1312,8 +1370,8 @@ EOF
 	std::colour -type warn -colour red "WARN:   Test 10 expected failure (without --permissive):"
 	# Test 10 # {{{
 	(
-		check="Test 10"
-		result=0
+		local check="Test 10"
+		local -i rc=0 testresult=0
 
 		args=()
 		(( std_DEBUG )) && info "Argument-parsing '${args[*]:-}' ..."
@@ -1321,10 +1379,12 @@ EOF
 		(( std_DEBUG )) && debug "$( std::parseargs --var unknown -- "${args[@]:-}" )"
 		eval "$( std::parseargs --var unknown -- "${args[@]:-}" )"
 		response="$(
+			echo "x"
 			echo "${item1[*]:-}"
 			echo "${item2[*]:-}"
 			echo "${item3[*]:-}"
 			echo "${unknown[*]:-}"
+			echo "x"
 		)"
 		rc=${?}
 		if (( std_DEBUG )); then
@@ -1342,9 +1402,15 @@ EOF
 
 		if (( rc )); then
 			info "${func} ${check} failed: ${rc}"
-			#result=1
+			#testresult=1
 		#else
 			std::define expected <<'EOF'
+x
+
+
+
+
+x
 EOF
 			if [[ "${response:-}" == "${expected}" ]]; then
 				#info "${func} ${check}: okay"
@@ -1352,17 +1418,17 @@ EOF
 			else
 				error "${func} ${check}: failed"
 				info "Expected:"
-				output "${expected}"
+				output "$( grep -v '^x$' <<<"${expected}" )"
 				info "Received:"
-				output "${response}"
-				#result=1
+				output "$( grep -v '^x$' <<<"${response}" )"
+				#testresult=1
 			fi
 		# Expected failure
 		else
-			result=1
+			testresult=1
 		fi
 
-		exit ${result}
+		exit ${testresult}
 	)
 	(( result += ${?} ))
 	# }}}
@@ -1370,8 +1436,8 @@ EOF
 	#output "\n"
 	# Test 11 # {{{
 	(
-		check="Test 11"
-		result=0
+		local check="Test 11"
+		local -i rc=0 testresult=0
 
 		args=( -item1 )
 		(( std_DEBUG )) && info "Argument-parsing '${args[*]:-}' ..."
@@ -1379,10 +1445,12 @@ EOF
 		(( std_DEBUG )) && debug "$( std::parseargs --permissive --var unknown -- "${args[@]:-}" )"
 		eval "$( std::parseargs --permissive --var unknown -- "${args[@]:-}" )"
 		response="$(
+			echo "x"
 			echo "${item1[*]:-}"
 			echo "${item2[*]:-}"
 			echo "${item3[*]:-}"
 			echo "${unknown[*]:-}"
+			echo "x"
 		)"
 		rc=${?}
 		if (( std_DEBUG )); then
@@ -1401,24 +1469,29 @@ EOF
 
 		if (( rc )); then
 			error "${func} ${check} failed: ${rc}"
-			result=1
+			testresult=1
 		else
 			std::define expected <<'EOF'
+x
 __DEFINED__
+
+
+
+x
 EOF
 			if [[ "${response:-}" == "${expected}" ]]; then
 				info "${func} ${check}: okay"
 			else
 				error "${func} ${check}: failed"
 				info "Expected:"
-				output "${expected}"
+				output "$( grep -v '^x$' <<<"${expected}" )"
 				info "Received:"
-				output "${response}"
-				result=1
+				output "$( grep -v '^x$' <<<"${response}" )"
+				testresult=1
 			fi
 		fi
 
-		exit ${result}
+		exit ${testresult}
 	)
 	(( result += ${?} ))
 	# }}}
@@ -1426,8 +1499,8 @@ EOF
 	#output "\n"
 	# Test 12 # {{{
 	(
-		check="Test 12"
-		result=0
+		local check="Test 12"
+		local -i rc=0 testresult=0
 
 		args=( -item1 -item2 )
 		(( std_DEBUG )) && info "Argument-parsing '${args[*]:-}' ..."
@@ -1435,10 +1508,12 @@ EOF
 		(( std_DEBUG )) && debug "$( std::parseargs --permissive --var unknown -- "${args[@]:-}" )"
 		eval "$( std::parseargs --permissive --var unknown -- "${args[@]:-}" )"
 		response="$(
+			echo "x"
 			echo "${item1[*]:-}"
 			echo "${item2[*]:-}"
 			echo "${item3[*]:-}"
 			echo "${unknown[*]:-}"
+			echo "x"
 		)"
 		rc=${?}
 		if (( std_DEBUG )); then
@@ -1458,25 +1533,29 @@ EOF
 
 		if (( rc )); then
 			error "${func} ${check} failed: ${rc}"
-			result=1
+			testresult=1
 		else
 			std::define expected <<'EOF'
+x
 __DEFINED__
 __DEFINED__
+
+
+x
 EOF
 			if [[ "${response:-}" == "${expected}" ]]; then
 				info "${func} ${check}: okay"
 			else
 				error "${func} ${check}: failed"
 				info "Expected:"
-				output "${expected}"
+				output "$( grep -v '^x$' <<<"${expected}" )"
 				info "Received:"
-				output "${response}"
-				result=1
+				output "$( grep -v '^x$' <<<"${response}" )"
+				testresult=1
 			fi
 		fi
 
-		exit ${result}
+		exit ${testresult}
 	)
 	(( result += ${?} ))
 	# }}}
@@ -1492,193 +1571,240 @@ EOF
 } # parseargs::test # }}}
 
 function push::test() { # {{{
-	local -i rc=0 result=0
+	local -i result=0
 	# Test-cases from https://github.com/vaeth/push/blob/71794c14a709d4ef2816d76db89c2b7f41a0b650/README
 
 	local response expected
 	local -a fargs=( "${@:-}" )
 
-	local func="std::push" check=""
+	local func="std::push"
 
 	# Example 1 # {{{
-	check="Example 1"
-	local foo
-	response="$(
-		set -e
-		std::push -c foo 'data with special symbols like ()"\' "'another arg'"
-		std::push foo further args
-		eval "printf '%s\\n' ${foo}"
-	)" 2>/dev/null
-	rc=${?}
+	(
+		local check="Example 1"
+		local -i rc=0 testresult=0
 
-	if (( rc )); then
-		error "${func} ${check} failed: ${rc}"
-		result=1
-	else
-		std::define expected <<'EOF'
+		local foo
+
+		# shellcheck disable=SC1003
+		response="$(
+			set -e
+			std::push -c foo 'data with special symbols like ()"\' "'another arg'"
+			std::push foo further args
+			eval "printf '%s\\n' ${foo}"
+		)" 2>/dev/null
+		rc=${?}
+
+		if (( rc )); then
+			error "${func} ${check} failed: ${rc}"
+			testresult=1
+		else
+			std::define expected <<'EOF'
 data with special symbols like ()"\
 'another arg'
 further
 args
 EOF
-		if [[ "${response:-}" == "${expected}" ]]; then
-			info "${func} ${check}: okay"
-		else
-			error "${func} ${check}: failed"
-			info "Expected:"
-			output "${expected}"
-			info "Received:"
-			output "${response}"
-			result=1
+			if [[ "${response:-}" == "${expected}" ]]; then
+				info "${func} ${check}: okay"
+			else
+				error "${func} ${check}: failed"
+				info "Expected:"
+				output "${expected}"
+				info "Received:"
+				output "${response}"
+				testresult=1
+			fi
 		fi
-	fi
-	unset foo
+
+		unset foo
+
+		exit ${testresult}
+	)
+	(( result += ${?} ))
 	# }}}
 
 	# Example 2 # {{{
-	check="Example 2"
-	local args
-	set -- a1 a2 a3 a4 removeme
-	response="$(
-		set -e
-		std::push -c args || true # For 'set -e'
-		while [ ${#} -gt 1 ]
-		do
-			std::push args "${1}"
-			shift
-		done
-		eval "set -- ${args}"
-		echo "${*}"
-	)" 2>/dev/null
-	rc=${?}
-	set -- "${fargs[@]}"
+	(
+		local check="Example 2"
+		local -i rc=0 testresult=0
 
-	if (( rc )); then
-		error "${func} ${check} failed: ${rc}"
-		result=1
-	else
-		std::define expected <<'EOF'
+		local args
+
+		set -- a1 a2 a3 a4 removeme
+		response="$(
+			set -e
+			std::push -c args || true # For 'set -e'
+			while [ ${#} -gt 1 ]
+			do
+				std::push args "${1}"
+				shift
+			done
+			eval "set -- ${args}"
+			echo "${*}"
+		)" 2>/dev/null
+		rc=${?}
+		set -- "${fargs[@]}"
+
+		if (( rc )); then
+			error "${func} ${check} failed: ${rc}"
+			testresult=1
+		else
+			std::define expected <<'EOF'
 a1 a2 a3 a4
 EOF
-		if [[ "${response:-}" == "${expected}" ]]; then
-			info "${func} ${check}: okay"
-		else
-			error "${func} ${check}: failed"
-			info "Expected:"
-			output "${expected}"
-			info "Received:"
-			output "${response}"
-			result=1
+			if [[ "${response:-}" == "${expected}" ]]; then
+				info "${func} ${check}: okay"
+			else
+				error "${func} ${check}: failed"
+				info "Expected:"
+				output "${expected}"
+				info "Received:"
+				output "${response}"
+				testresult=1
+			fi
 		fi
-	fi
-	unset args
+
+		unset args
+
+		exit ${testresult}
+	)
+	(( result += ${?} ))
 	# }}}
 
 	# Example 3 # {{{
-	check="Example 3"
-	local files
-	set -- a1 " a2 " "'a3'" '"a4"' '<a5' '>a6'
-	response="$(
-		set -e
-		std::push -c files "${@}" && echo "su -c \"cat -- ${files}\""
-	)" 2>/dev/null
-	rc=${?}
-	set -- "${fargs[@]}"
+	(
+		local check="Example 3"
+		local -i rc=0 testresult=0
 
-	if (( rc )); then
-		error "${func} ${check} failed: ${rc}"
-		result=1
-	else
-		std::define expected <<'EOF'
+		local files
+
+		set -- a1 " a2 " "'a3'" '"a4"' '<a5' '>a6'
+		response="$(
+			set -e
+			std::push -c files "${@}" && echo "su -c \"cat -- ${files}\""
+		)" 2>/dev/null
+		rc=${?}
+		set -- "${fargs[@]}"
+
+		if (( rc )); then
+			error "${func} ${check} failed: ${rc}"
+			testresult=1
+		else
+			std::define expected <<'EOF'
 su -c "cat -- a1 ' a2 ' \'a3\' '"a4"' '<a5' '>a6'"
 EOF
-		if [[ "${response:-}" == "${expected}" ]]; then
-			info "${func} ${check}: okay"
-		else
-			error "${func} ${check}: failed"
-			info "Expected:"
-			output "${expected}"
-			info "Received:"
-			output "${response}"
-			result=1
+			if [[ "${response:-}" == "${expected}" ]]; then
+				info "${func} ${check}: okay"
+			else
+				error "${func} ${check}: failed"
+				info "Expected:"
+				output "${expected}"
+				info "Received:"
+				output "${response}"
+				testresult=1
+			fi
 		fi
-	fi
-	unset files
+
+		unset files
+
+		exit ${testresult}
+	)
+	(( result += ${?} ))
 	# }}}
 
 	# Example 4 # {{{
-	check="Example 4"
-	local v
-	set -- source~1 'source 2' "source '3'"
-	response="$(
-		set -e
-		std::push -c v cp -- "${@}" \~dest
-		printf '%s\n' "${v}"
-	)" 2>/dev/null
-	rc=${?}
-	set -- "${fargs[@]}"
+	(
+		local check="Example 4"
+		local -i rc=0 testresult=0
 
-	if (( rc )); then
-		error "${func} ${check} failed: ${rc}"
-		result=1
-	else
-		std::define expected <<'EOF'
+		local v
+
+		set -- source~1 'source 2' "source '3'"
+		response="$(
+			set -e
+			std::push -c v cp -- "${@}" \~dest
+			printf '%s\n' "${v}"
+		)" 2>/dev/null
+		rc=${?}
+		set -- "${fargs[@]}"
+
+		if (( rc )); then
+			error "${func} ${check} failed: ${rc}"
+			testresult=1
+		else
+			std::define expected <<'EOF'
 cp -- source~1 'source 2' 'source '\'3\' '~dest'
 EOF
-		if [[ "${response:-}" == "${expected}" ]]; then
-			info "${func} ${check}: okay"
-		else
-			error "${func} ${check}: failed"
-			info "Expected:"
-			output "${expected}"
-			info "Received:"
-			output "${response}"
-			result=1
+			if [[ "${response:-}" == "${expected}" ]]; then
+				info "${func} ${check}: okay"
+			else
+				error "${func} ${check}: failed"
+				info "Expected:"
+				output "${expected}"
+				info "Received:"
+				output "${response}"
+				testresult=1
+			fi
 		fi
-	fi
-	unset v
+
+		unset v
+
+		exit ${testresult}
+	)
+	(( result += ${?} ))
 	# }}}
 
 	# Example 5 # {{{
-	check="Example 5"
-	local data
-	response="$(
-		set -e
+	(
+		local check="Example 5"
+		local -i rc=0 testresult=0
 
-		function donothing() {
-			:
-		}
-		function dosomething() {
-			std::push data "item"
-		}
-		std::push -c data || true # For 'set -e'
-		donothing
-		std::push data || echo 'nothing was pushed to $data in donothing'
-		dosomething
-		std::push data || echo 'nothing was pushed to $data in dosomething'
-	)" 2>/dev/null
-	rc=${?}
-	set -- "${fargs[@]}"
+		response="$(
+			# shellcheck disable=SC2034
+			local data
 
-	if (( rc )); then
-		error "${func} ${check} failed: ${rc}"
-		result=1
-	else
-		std::define expected <<'EOF'
+			set -e
+
+			function donothing() {
+				:
+			}
+			function dosomething() {
+				std::push data "item"
+			}
+			std::push -c data || true # For 'set -e'
+			donothing
+			# shellcheck disable=SC2016
+			std::push data || echo 'nothing was pushed to $data in donothing'
+			dosomething
+			# shellcheck disable=SC2016
+			std::push data || echo 'nothing was pushed to $data in dosomething'
+		)" 2>/dev/null
+		rc=${?}
+		set -- "${fargs[@]}"
+
+		if (( rc )); then
+			error "${func} ${check} failed: ${rc}"
+			testresult=1
+		else
+			std::define expected <<'EOF'
 nothing was pushed to $data in donothing
 EOF
-		if [[ "${response:-}" == "${expected}" ]]; then
-			info "${func} ${check}: okay"
-		else
-			error "${func} ${check}: failed"
-			info "Expected:"
-			output "${expected}"
-			info "Received:"
-			output "${response}"
-			result=1
+			if [[ "${response:-}" == "${expected}" ]]; then
+				info "${func} ${check}: okay"
+			else
+				error "${func} ${check}: failed"
+				info "Expected:"
+				output "${expected}"
+				info "Received:"
+				output "${response}"
+				testresult=1
+			fi
 		fi
-	fi
-	unset data
+
+		exit ${testresult}
+	)
+	(( result += ${?} ))
 	# }}}
 
 	if (( result )); then
@@ -1691,9 +1817,119 @@ EOF
 	return ${result}
 } # push::test # }}}
 
+function wrap::test() { # {{{
+	local response expected
+	local -i result=0
+
+	local func="std::wrap"
+
+	local stdlib_want_wordwrap="${STDLIB_WANT_WORDWRAP:-}"
+	local columns="${COLUMNS:-}"
+	export STDLIB_WANT_WORDWRAP=1
+	export COLUMNS=20
+
+	# Test 1 # {{{
+	(
+		local check="Test 1"
+		local -i rc=0
+
+		response="$( std::wrap "Short output, no prefix" )"
+#         1         2
+#12345678901234567890
+		std::define expected <<'EOF'
+Short output, no 
+prefix
+EOF
+		if [[ "${response:-}" == "${expected}" ]]; then
+			info "${func} ${check}: okay"
+		else
+			error "${func} ${check}: failed"
+			info "Expected:"
+			output "$( sed "s/^/'/ ; s/$/'/" <<<"${expected}" )"
+			info "Received:"
+			output "$( sed "s/^/'/ ; s/$/'/" <<<"${response}" )"
+			rc=1
+		fi
+
+		exit ${rc}
+	)
+	(( result += ${?} ))
+	# }}}
+
+	# Test 2 # {{{
+	(
+		local check="Test 2"
+		local -i rc=0
+
+		response="$( std::wrap "PREFIX:" "Short output, with prefix" )"
+#         1         2
+#12345678901234567890
+		std::define expected <<'EOF'
+PREFIX: Short 
+prefix: output, 
+prefix: with prefix
+EOF
+		if [[ "${response:-}" == "${expected}" ]]; then
+			info "${func} ${check}: okay"
+		else
+			error "${func} ${check}: failed"
+			info "Expected:"
+			output "$( sed "s/^/'/ ; s/$/'/" <<<"${expected}" )"
+			info "Received:"
+			output "$( sed "s/^/'/ ; s/$/'/" <<<"${response}" )"
+			rc=1
+		fi
+
+		exit ${rc}
+	)
+	(( result += ${?} ))
+	# }}}
+
+	# Test 3 # {{{
+	(
+		local check="Test 3"
+		local -i rc=0
+
+		# shellcheck disable=SC2030
+		export STDLIB_WANT_WORDWRAP=0
+
+		response="$( std::wrap "PREFIX:" "Non-wrapped long output, with prefix" )"
+		std::define expected <<'EOF'
+PREFIX: Non-wrapped long output, with prefix
+EOF
+		if [[ "${response:-}" == "${expected}" ]]; then
+			info "${func} ${check}: okay"
+		else
+			error "${func} ${check}: failed"
+			info "Expected:"
+			output "$( sed "s/^/'/ ; s/$/'/" <<<"${expected}" )"
+			info "Received:"
+			output "$( sed "s/^/'/ ; s/$/'/" <<<"${response}" )"
+			rc=1
+		fi
+
+		exit ${rc}
+	)
+	(( result += ${?} ))
+	# }}}
+
+	# shellcheck disable=SC2031
+	export STDLIB_WANT_WORDWRAP="${stdlib_want_wordwrap:-}"
+	export COLUMNS="${columns:-}"
+
+	if (( result )); then
+		error "${FUNCNAME[0]##*_} failed test-suite"
+	else
+		info "${FUNCNAME[0]##*_} passed test-suite"
+	fi
+
+	# Don't stomp std_ERRNO
+	return ${result}
+} # wrap::test # }}}
+
 # }}}
 
-function main() {
+function main() { # {{{
 	local wanted="${*:-}"
 	local -i rc=0 debug=${std_DEBUG:-0}
 
@@ -1733,13 +1969,18 @@ function main() {
 		output
 	fi
 
+	if grep -Eq ' (wrap|all) ' <<<" ${wanted} "; then
+		wrap::test "${@:-}" ; rc+=${?}
+		output
+	fi
+
 	# Don't stomp std_ERRNO
 	return ${rc}
-} # main
+} # main # }}}
 
 # Defined in stdlib.sh
 # shellcheck disable=SC2034
-std_USAGE="<colour|emktemp|http|mktemp|parseargs|push|all>"
+std_USAGE="<colour|emktemp|http|mktemp|parseargs|push|wrap|all>"
 
 main "${@:-}"
 
