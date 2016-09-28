@@ -15,6 +15,7 @@ export STDLIB_WANT_COLOUR=1
 # {{{
 # stdlib.sh should be in /usr/local/lib/stdlib.sh, which can be found as
 # follows by scripts located in /usr/local/{,s}bin/...
+type -pf 'dirname' >/dev/null 2>&1 || function dirname() { : ; }
 declare std_LIB="stdlib.sh"
 for std_LIBPATH in							\
 	"$( dirname -- "${BASH_SOURCE:-${0:-.}}" )"			\
@@ -29,6 +30,7 @@ do
 		break
 	fi
 done
+unset -f dirname
 #
 # We want the non if-then-else functionality here - the third element should be
 # executed if either of the first two fail...
