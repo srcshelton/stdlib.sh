@@ -18,8 +18,9 @@
 
 # stdlib.sh should be in /usr/local/lib/stdlib.sh, which can be found as
 # follows by scripts located in /usr/local/{,s}bin/...
-type -pf 'dirname' >/dev/null 2>&1 || function dirname() { : ; }
 declare std_LIB='stdlib.sh'
+type -pf 'dirname' >/dev/null 2>&1 || function dirname() { : ; }
+# shellcheck disable=SC2153
 for std_LIBPATH in							\
 	"$( dirname -- "${BASH_SOURCE:-${0:-.}}" )"			\
 	'.'								\
@@ -46,10 +47,12 @@ unset -f dirname
 # N.B. The shellcheck 'source' option is only valid with shellcheck 0.4.0 and
 #      later...
 #
-# shellcheck disable=SC2015
+# shellcheck disable=SC1091,SC2015
 # shellcheck source=/usr/local/lib/stdlib.sh
 [[ -r "${std_LIBPATH}/${std_LIB}" ]] && source "${std_LIBPATH}/${std_LIB}" || {
-	echo >&2 "FATAL:  Unable to source ${std_LIB} functions: ${?}"
+	# shellcheck disable=SC2154
+	echo >&2 "FATAL:  Unable to source ${std_LIB} functions:" \
+		 "${?}${std_ERRNO:+ (ERRNO ${std_ERRNO})}"
 	exit 1
 }
 
@@ -92,6 +95,10 @@ EOC
 # 			  requirements, instead override usage-message;
 # std_ERRNO		- Return an additional error-indication from a
 # 			  function.
+# std_LASTOUTPUT	- A copy of the last output written, to aid in output
+#			  formatting (in order to determine whether the last
+#			  thing written was a blank line, for example...)
+#
 
 
 ###############################################################################
@@ -197,8 +204,9 @@ fi # }}}
                              # creation a temporary directory.  std::parseargs
                              # can now handle defined parameters with no value;
 #export  std_RELEASE='2.0.2' # Make wrapping via std::wrap optional;
-export   std_RELEASE='2.0.3' # Ensure that required shell tools are available,
+#export  std_RELEASE='2.0.3' # Ensure that required shell tools are available,
                              # and that traps are correctly initialised.
+export   std_RELEASE='2.0.4' # Add std_LASTOUTPUT support.
 readonly std_RELEASE
 
 
@@ -323,9 +331,11 @@ function output() {
 
 	if ! [[ -n "${*:-}" ]]; then
 		echo
+		std_LASTOUTPUT=""
 	else
 		[[ " ${1:-} " == ' -n ' ]] && { flags+='n' ; shift ; }
 		echo ${flags} "${*}"
+		std_LASTOUTPUT="${*}"
 	fi
 
 	std_ERRNO=0 # instead use 'std_ERRNO=$( errsymbol ENOERROR )'
@@ -405,6 +415,8 @@ export STDLIB_HAVE_STDLIB=0
 export STDLIB_HAVE_MEMCACHED=0
 
 export std_ERRNO=0 # instead use 'std_ERRNO=$( errsymbol ENOERROR )'
+
+export std_LASTOUTPUT=""
 
 declare -a __STDLIB_OWNED_FILES
 
@@ -866,9 +878,11 @@ function __STDLIB_API_1_std::wrap() { # {{{
 			  output "${text}" \
 			| fold -sw "$(( columns - ( ${#prefix} + 1 ) ))" \
 			| sed "s|^|${lprefix} | ; 1{s|^${lprefix}|${prefix}|}"
+			std_LASTOUTPUT="$( sed "s|^|${lprefix} | ; 1{s|^${lprefix}|${prefix}|}" <<<"${text}" )"
 		else
 			  output "${text}" \
 			| sed "s|^|${prefix} | ; 1{s|^${lprefix}|${prefix}|}"
+			std_LASTOUTPUT="$( sed "s|^|${prefix} | ; 1{s|^${lprefix}|${prefix}|}" <<<"${text}" )"
 		fi
 	else
 		if (( wrap )) && (( columns > 1 )); then
