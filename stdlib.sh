@@ -59,6 +59,24 @@ unset -f dirname
 # --- CUT HERE ---
 EOC
 
+# If you wish to ensure that a given minimum version of stdlib.sh is present
+# from within a script, then this can be acheieved as follows (substituting
+# versions '2.0.0' and '2.0.4' as appropriate):
+#
+: >/dev/null <<\EOC
+# --- CUT HERE ---
+
+# std_RELEASE was only added in release 1.3, and std::vcmp appeared immediately
+# after in release 1.4...
+if [[ "${std_RELEASE:-1.3}" == "1.3" ]] || std::vcmp "${std_RELEASE}" -lt "2.0.0"; then
+	die "stdlib is too old - please update '${std_LIBPATH}/${std_LIB}' to at least v2.0.0" # for API 2
+elif std::vcmp "${std_RELEASE}" -lt "2.0.4"; then
+        warn "stdlib is outdated - please update '${std_LIBPATH}/${std_LIB}' to at least v2.0.4" # for std_LASTOUTPUT
+fi
+
+# --- CUT HERE ---
+EOC
+
 
 # Externally set control-variables:
 #
