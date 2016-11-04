@@ -206,7 +206,10 @@ fi # }}}
 #export  std_RELEASE='2.0.2' # Make wrapping via std::wrap optional;
 #export  std_RELEASE='2.0.3' # Ensure that required shell tools are available,
                              # and that traps are correctly initialised.
-export   std_RELEASE='2.0.4' # Add std_LASTOUTPUT support.
+#export  std_RELEASE='2.0.4' # Add std_LASTOUTPUT support.
+export   std_RELEASE='2.0.5' # Enhance representation of std_TAB and std_NL,
+                             # add std_CR and std_LF (as GitHub is unhappy with
+                             # embedded carriage-return characters).
 readonly std_RELEASE
 
 
@@ -401,9 +404,12 @@ export NAME
 export LC_ALL='C'
 
 # These values should make certain code much clearer...
-export std_TAB='	'
-export std_NL='
-'
+declare std_TAB std_CR std_LF std_NL
+std_TAB="$( printf "\t" )"
+std_CR="$( printf "\r" )"
+std_LF="$( printf "\n" )"
+std_NL="${std_LF}"
+export std_TAB std_CR std_LF std_NL
 
 # We don't want to rely on $SHELL so, as an alternative, this should work - but
 # is also a little bit scary...
