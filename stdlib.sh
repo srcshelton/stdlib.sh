@@ -5,6 +5,8 @@
 #
 # stdlib.sh standardised shared shell functions...
 
+set +o xtrace
+
 ###############################################################################
 #
 # stdlib.sh - How to load ...
@@ -225,9 +227,11 @@ fi # }}}
 #export  std_RELEASE='2.0.3' # Ensure that required shell tools are available,
                              # and that traps are correctly initialised.
 #export  std_RELEASE='2.0.4' # Add std_LASTOUTPUT support.
-export   std_RELEASE='2.0.5' # Enhance representation of std_TAB and std_NL,
+#export  std_RELEASE='2.0.5' # Enhance representation of std_TAB and std_NL,
                              # add std_CR and std_LF (as GitHub is unhappy with
                              # embedded carriage-return characters).
+export   std_RELEASE='2.0.6' # Disable tracing for internal functions, unless
+                             # DEBUG=2, to aid external debugging.
 readonly std_RELEASE
 
 
@@ -257,6 +261,8 @@ std_TRACE="${TRACE:-0}"
 EOC
 #
 # ... near the top of the calling script.
+#
+# A good way to tell whether 'xtrace' is enabled is `[[ "${-/x}" != "${-}" ]]`
 
 
 ###############################################################################
@@ -348,6 +354,9 @@ shopt -qs failglob
 # output from pipeline-intermediate commands.
 #
 function output() {
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	local flags='-e'
 
 	if ! [[ -n "${*:-}" ]]; then
@@ -360,6 +369,9 @@ function output() {
 	fi
 
 	std_ERRNO=0 # instead use 'std_ERRNO=$( errsymbol ENOERROR )'
+
+	(( std_x_state )) && set -o xtrace
+
 	return 0
 } # output
 
@@ -367,9 +379,15 @@ function output() {
 # from pipeline-intermediate commands.
 #
 function respond() {
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	[[ -n "${*:-}" ]] && echo "${*}"
 
 	std_ERRNO=0 # instead use 'std_ERRNO=$( errsymbol ENOERROR )'
+
+	(( std_x_state )) && set -o xtrace
+
 	return 0
 } # respond
 
@@ -458,6 +476,8 @@ declare -a __STDLIB_OWNED_FILES
 #       in this case the ultimate parent does impose the interpreter.
 #
 function __STDLIB_oneshot_get_bash_version() { # {{{
+	set +o xtrace
+
 	local parent="${0:-}"
 	local int shell version
 
@@ -551,6 +571,8 @@ function __STDLIB_oneshot_get_bash_version() { # {{{
 ###############################################################################
 
 function __STDLIB_oneshot_syntax_check() { # {{{
+	set +o xtrace
+
 	local script
 
 	if ! (( STDLIB_HAVE_BASH_4 )) || ! [[ -n "${SHELL:-}" && "${SHELL}" =~ bash$ ]]; then
@@ -591,6 +613,8 @@ function __STDLIB_oneshot_syntax_check() { # {{{
 ## shellcheck gets confused by the constants used below...
 # shellcheck disable=SC2154
 function __STDLIB_oneshot_colours_init() { # {{{
+	set +o xtrace
+
 	local file key value val
 	local -l section
 	local -i fg bg mode
@@ -720,6 +744,9 @@ function main() {
 # This function may be overridden
 #
 function __STDLIB_API_1_std::cleanup() { # {{{
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	# N.B.: 'rc' initially contains ${?}, not ${1}
 	local -i rc=${?}
 	local file
@@ -780,6 +807,8 @@ function __STDLIB_API_1_std::cleanup() { # {{{
 	[[ -n "${__STDLIB_SIGQUIT:-}" ]] && trap ${__STDLIB_SIGQUIT} QUIT
 	[[ -n "${__STDLIB_SIGTERM:-}" ]] && trap ${__STDLIB_SIGTERM} TERM
 
+	(( std_x_state )) && set -o xtrace # ... for code trapping exit?
+
 	# 'rc' is numeric, and therefore not subject to word-splitting
 	# shellcheck disable=SC2086
 	exit ${rc}
@@ -799,10 +828,13 @@ declare __STDLIB_usage_message_definition
 __STDLIB_usage_message_definition="$( typeset -f usage-message )"
 export __STDLIB_usage_message_definition
 
-# This function should be overridden, or the ${std_USAGE} variable defined
+# This function must be overridden, or the ${std_USAGE} variable defined
 #
 function __STDLIB_API_1_std::usage-message() { # {{{
 	die 'No override std::usage-message() function defined'
+
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
 
 	# The following output will appear in-line after 'Usage: ${NAME} '...
 	output 'Command summary, e.g. "-f|--file <filename> [options]"'
@@ -814,12 +846,18 @@ Further instructions here, e.g.
 	END
 
 	std_ERRNO=0 # instead use 'std_ERRNO=$( errsymbol ENOERROR )'
+
+	(( std_x_state )) && set -o xtrace
+
 	return 0
 } # __STDLIB_API_1_std::usage-message # }}}
 
 # This function may be overridden
 #
 function __STDLIB_API_1_std::usage() { # {{{
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	local rc="${1:-0}" ; shift
 
 	# Optional arguments should be denoted as '[parameter]', required
@@ -838,6 +876,8 @@ function __STDLIB_API_1_std::usage() { # {{{
 		fi
 	fi
 
+	(( std_x_state )) && set -o xtrace
+
 	# 'rc' is numeric, and therefore not subject to word-splitting
 	# shellcheck disable=SC2086
 	__STDLIB_API_1_std::cleanup ${rc}
@@ -851,6 +891,9 @@ function __STDLIB_API_1_std::usage() { # {{{
 ###############################################################################
 
 function __STDLIB_API_1_std::wrap() { # {{{
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	local prefix="${1:-}" ; shift
 	local text="${*:-}"
 
@@ -863,6 +906,9 @@ function __STDLIB_API_1_std::wrap() { # {{{
 
 	[[ -n "${text:-}" ]] || {
 		std_ERRNO=$( errsymbol EARGS )
+
+		(( std_x_state )) && set -o xtrace
+
 		return 1
 	}
 
@@ -918,10 +964,16 @@ function __STDLIB_API_1_std::wrap() { # {{{
 	fi
 
 	std_ERRNO=0 # instead use 'std_ERRNO=$( errsymbol ENOERROR )'
+
+	(( std_x_state )) && set -o xtrace
+
 	return 0
 } # __STDLIB_API_1_std::wrap # }}}
 
 function __STDLIB_API_1_std::log() { # {{{
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	local prefix="${1:-${std_LIB}}" ; shift
 	local data="${*:-}" message
 
@@ -934,6 +986,9 @@ function __STDLIB_API_1_std::log() { # {{{
 	fi
 	[[ -n "${data:-}" ]] || {
 		std_ERRNO=$( errsymbol EARGS )
+
+		(( std_x_state )) && set -o xtrace
+
 		return 1
 	}
 
@@ -958,12 +1013,17 @@ function __STDLIB_API_1_std::log() { # {{{
 		__STDLIB_API_1_std::wrap "${prefix}" "${data}"
 	fi
 
+	(( std_x_state )) && set -o xtrace
+
 	# Don't stomp on std_ERRNO
 	return $(( ! std_DEBUG ))
 } # __STDLIB_API_1_std::log # }}}
 
 # shellcheck disable=SC2034
 function __STDLIB_API_1_std::colour() { # {{{
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	local string=""
 	local -a text=()
 	local -la colour=() type=()
@@ -1013,6 +1073,8 @@ function __STDLIB_API_1_std::colour() { # {{{
 	[[ -n "${type[*]:-}" || -n "${*:-}" ]] || {
 		respond ""
 
+		(( std_x_state )) && set -o xtrace
+
 		# Don't stomp on std_ERRNO
 		return 0
 	}
@@ -1020,12 +1082,17 @@ function __STDLIB_API_1_std::colour() { # {{{
 	if [[ -z "${STDLIB_WANT_COLOUR:-}" ]] || ! (( STDLIB_WANT_COLOUR )); then
 		respond "${*:-}"
 
+		(( std_x_state )) && set -o xtrace
+
 		# Don't stomp on std_ERRNO
 		return 0
 	fi
 
 	if ! (( ${#__STDLIB_COLOURMAP[@]:-} )); then
 		std_ERRNO=$( errsymbol EENV )
+
+		(( std_x_state )) && set -o xtrace
+
 		return 1
 	fi
 
@@ -1198,6 +1265,8 @@ function __STDLIB_API_1_std::colour() { # {{{
 		output "${string}${*:-}\e[0m"
 	fi
 
+	(( std_x_state )) && set -o xtrace
+
 	# Don't stomp on std_ERRNO
 	return 0
 } # __STDLIB_API_1_std::colour # }}}
@@ -1209,9 +1278,14 @@ function __STDLIB_API_1_std::colour() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_die() { # {{{
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	[[ -n "${*:-}" ]] && \
 	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "$( __STDLIB_API_1_std::colour 'FATAL: ' )" "${*}"
 	__STDLIB_API_1_std::cleanup 1
+
+	(( std_x_state )) && set -o xtrace
 
 	# Don't stomp on std_ERRNO
 	return 1
@@ -1220,7 +1294,12 @@ function __STDLIB_API_1_die() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_error() { # {{{
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "$( __STDLIB_API_1_std::colour 'ERROR: ' )" "${*:-Unspecified error}"
+
+	(( std_x_state )) && set -o xtrace
 
 	# Don't stomp on std_ERRNO
 	return 1
@@ -1229,7 +1308,12 @@ function __STDLIB_API_1_error() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_warn() { # {{{
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	std_DEBUG=1 __STDLIB_API_1_std::log >&2 "$( __STDLIB_API_1_std::colour 'WARN:  ' )" "${*:-Unspecified warning}"
+
+	(( std_x_state )) && set -o xtrace
 
 	# Don't stomp on std_ERRNO
 	return 1
@@ -1239,20 +1323,41 @@ function __STDLIB_API_1_warn() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_note() { # {{{
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	std_DEBUG=1 __STDLIB_API_1_std::log     "$( __STDLIB_API_1_std::colour 'NOTICE:' )" "${*:-Unspecified notice}"
+
+	(( std_x_state )) && set -o xtrace
 
 	# Don't stomp on std_ERRNO
 	return 0
 } # __STDLIB_API_1_note # }}}
 
 function __STDLIB_API_1_notice() { # {{{
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
+	local -i rc=0
+
 	__STDLIB_API_1_note "${@:-}"
+	rc=${?}
+
+	(( std_x_state )) && set -o xtrace
+
+	# Don't stomp on std_ERRNO
+	return ${rc}
 } # __STDLIB_API_1_notice # }}}
 
 # This function may be overridden
 #
 function __STDLIB_API_1_info() { # {{{
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	std_DEBUG=1 __STDLIB_API_1_std::log     "$( __STDLIB_API_1_std::colour 'INFO:  ' )" "${*:-Unspecified message}"
+
+	(( std_x_state )) && set -o xtrace
 
 	# Don't stomp on std_ERRNO
 	return 0
@@ -1261,8 +1366,13 @@ function __STDLIB_API_1_info() { # {{{
 # This function may be overridden
 #
 function __STDLIB_API_1_debug() { # {{{
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	(( std_DEBUG )) && \
 	            __STDLIB_API_1_std::log >&2 "$( __STDLIB_API_1_std::colour 'DEBUG: ' )" "${*:-Unspecified debug message}"
+
+	(( std_x_state )) && set -o xtrace
 
 	# Don't stomp on std_ERRNO
 	return $(( ! std_DEBUG ))
@@ -1276,6 +1386,8 @@ function __STDLIB_API_1_debug() { # {{{
 ###############################################################################
 
 function __STDLIB_oneshot_errno_init() { # {{{
+	set +o xtrace
+
 	local count=0
 
 	# This function must be called, once, before the errno functions can be
@@ -1323,6 +1435,9 @@ function __STDLIB_oneshot_errno_init() { # {{{
 } # __STDLIB_oneshot_errno_init # }}}
 
 function __STDLIB_API_1_symerror() { # {{{
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	local -i err="${1:-${std_ERRNO:-0}}"
 
 	# Given an error number, provide the associated symbolic error name.
@@ -1331,20 +1446,31 @@ function __STDLIB_API_1_symerror() { # {{{
 		# FIXME: Obsolete
 		error "errno not initialised - please re-import ${std_LIB}" \
 		      "with 'STDLIB_WANT_ERRNO' set"
+
+		(( std_x_state )) && set -o xtrace
+
 		return 1
 	fi
 
 	if (( err >= 0 && err <= ${__STDLIB_errtotal:-0} )) && [[ -n "${__STDLIB_errsym[ ${err} ]:-}" ]]; then
 		respond "${__STDLIB_errsym[ ${err} ]}"
 
+		(( std_x_state )) && set -o xtrace
+
 		return 0
 	fi
 
 	std_ERRNO=1 # instead use 'std_ERRNO=$( errsymbol ENOTFOUND )'
+
+	(( std_x_state )) && set -o xtrace
+
 	return 1
 } # __STDLIB_API_1_symerror # }}}
 
 function __STDLIB_API_1_errsymbol() { # {{{
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	local symbol="${1:-}"
 	local -i n
 
@@ -1355,10 +1481,16 @@ function __STDLIB_API_1_errsymbol() { # {{{
 		# FIXME: Obsolete
 		error "errno not initialised - please re-import ${std_LIB}" \
 			"with 'STDLIB_WANT_ERRNO' set"
+
+		(( std_x_state )) && set -o xtrace
+
 		return 1
 	fi
 	if [[ -z "${symbol:-}" ]]; then
 		std_ERRNO=3 # instead use 'std_ERRNO=$( errsymbol EARGS )'
+
+		(( std_x_state )) && set -o xtrace
+
 		return 1
 	fi
 
@@ -1366,15 +1498,23 @@ function __STDLIB_API_1_errsymbol() { # {{{
 		if [[ "${symbol}" == "${__STDLIB_errsym[ ${n} ]:-}" ]]; then
 			respond "${n}"
 
+			(( std_x_state )) && set -o xtrace
+
 			return 0
 		fi
 	done
 
 	std_ERRNO=1 # instead use 'std_ERRNO=$( errsymbol ENOTFOUND )'
+
+	(( std_x_state )) && set -o xtrace
+
 	return 1
 } # __STDLIB_API_1_errsymbol # }}}
 
 function __STDLIB_API_1_strerror() { # {{{
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	local err="${1:-${std_ERRNO:-}}" ; shift
 	local msg='Unknown error number' rc=1
 
@@ -1384,6 +1524,9 @@ function __STDLIB_API_1_strerror() { # {{{
 		# FIXME: Obsolete
 		error "errno not initialised - please re-import ${std_LIB}" \
 			"with 'STDLIB_WANT_ERRNO' set"
+
+		(( std_x_state )) && set -o xtrace
+
 		return 1
 	fi
 
@@ -1393,6 +1536,8 @@ function __STDLIB_API_1_strerror() { # {{{
 	fi
 
 	respond "${msg}"
+
+	(( std_x_state )) && set -o xtrace
 
 	return ${rc}
 } # __STDLIB_API_1_strerror # }}}
@@ -1405,7 +1550,11 @@ function __STDLIB_API_1_strerror() { # {{{
 ###############################################################################
 
 function __STDLIB_API_1_std::garbagecollect() { # {{{
-	local file="" rc=0
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
+	local file=""
+	local -i rc=0
 
 	# Add an additional file to the list of files to be removed when
 	# std::cleanup is invoked.
@@ -1434,11 +1583,16 @@ function __STDLIB_API_1_std::garbagecollect() { # {{{
 		fi
 	fi
 
+	(( std_x_state )) && set -o xtrace
+
 	# std_ERRNO set above
 	return ${rc:-1}
 } # __STDLIB_API_1_std::garbagecollect # }}}
 
 function __STDLIB_API_1_std::mktemp() { # {{{
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	local -a tmpdir=() suffix=() directory=() files=()
 	local -i namedargs=1
 
@@ -1589,6 +1743,9 @@ function __STDLIB_API_1_std::mktemp() { # {{{
 				error "${message}"
 
 				std_ERRNO=$( errsymbol EERROR )
+
+				(( std_x_state )) && set -o xtrace
+
 				return 1
 			} )"
 		)
@@ -1614,10 +1771,16 @@ function __STDLIB_API_1_std::mktemp() { # {{{
 	fi
 
 	std_ERRNO=0 # instead use 'std_ERRNO=$( errsymbol ENOERROR )'
+
+	(( std_x_state )) && set -o xtrace
+
 	return 0
 } # __STDLIB_API_1_std::mktemp # }}}
 
 function __STDLIB_API_1_std::emktemp() { # {{{
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	local -a var=() tmpdir=() suffix=() directory=() names=()
 
 	# Usage: std::emktemp -var <variable> [-directory] _
@@ -1645,12 +1808,18 @@ function __STDLIB_API_1_std::emktemp() { # {{{
 		error "${FUNCNAME[0]##*_} requires at least one argument"
 
 		std_ERRNO=$( errsymbol EARGS )
+
+		(( std_x_state )) && set -o xtrace
+
 		return 1
 	}
 	if ! [[ "${var[0]}" =~ ^[a-zA-Z_]+[a-zA-Z0-9_]*$ ]]; then
 		error "${FUNCNAME[0]##*_} parameter-name '${var[0]}' is not a valid variable-name"
 
 		std_ERRNO=$( errsymbol EARGS )
+
+		(( std_x_state )) && set -o xtrace
+
 		return 1
 	fi
 
@@ -1679,6 +1848,9 @@ function __STDLIB_API_1_std::emktemp() { # {{{
 
 	if (( rc )); then
 		# std_ERRNO set by __STDLIB_API_1_std::mktemp
+
+		(( std_x_state )) && set -o xtrace
+
 		return ${rc}
 	else
 		for file in "${files[@]:-}"; do
@@ -1693,6 +1865,8 @@ function __STDLIB_API_1_std::emktemp() { # {{{
 		rc=1
 	fi
 
+	(( std_x_state )) && set -o xtrace
+
 	# std_ERRNO set by __STDLIB_API_1_std::garbagecollect
 	return ${rc}
 } # __STDLIB_API_1_std::emktemp # }}}
@@ -1705,6 +1879,9 @@ function __STDLIB_API_1_std::emktemp() { # {{{
 ###############################################################################
 
 function __STDLIB_API_1_std::push() { # {{{
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	local std_push_result='' std_push_var std_push_current std_push_segment std_push_arg std_push_add_quote=""
 	local -i rc=0
 
@@ -1860,6 +2037,9 @@ function __STDLIB_API_1_std::push() { # {{{
 
 	std_ERRNO=0 # instead use 'std_ERRNO=$( errsymbol ENOERROR )'
 	(( rc )) && std_ERRNO=$( errsymbol EERROR )
+
+	(( std_x_state )) && set -o xtrace
+
 	return ${rc}
 } # __STDLIB_API_1_std::push # }}}
 
@@ -1871,11 +2051,17 @@ function __STDLIB_API_1_std::push() { # {{{
 ###############################################################################
 
 function __STDLIB_API_1_std::readlink() { # {{{
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	local file="${1:-}" ; shift
 	local -i rc=0
 
 	[[ -n "${file:-}" ]] || {
 		std_ERRNO=$( errsymbol EARGS )
+
+		(( std_x_state )) && set -o xtrace
+
 		return 1
 	}
 
@@ -1922,6 +2108,9 @@ function __STDLIB_API_1_std::readlink() { # {{{
 			respond "$( perl -MCwd=abs_path -le 'print abs_path readlink(shift);' "${file}" )"
 
 			std_ERRNO=0 # instead use 'std_ERRNO=$( errsymbol ENOERROR )'
+
+			(( std_x_state )) && set -o xtrace
+
 			return 0
 		fi
 	fi
@@ -1949,14 +2138,23 @@ function __STDLIB_API_1_std::readlink() { # {{{
 		respond "${result}"
 
 		std_ERRNO=0 # instead use 'std_ERRNO=$( errsymbol ENOERROR )'
+
+		(( std_x_state )) && set -o xtrace
+
 		return 0
 	else
 		std_ERRNO=$( errsymbol ENOTFOUND )
+
+		(( std_x_state )) && set -o xtrace
+
 		return 1
 	fi
 
 	# Unreachable
 	std_ERRNO=$( errsymbol EERROR )
+
+	(( std_x_state )) && set -o xtrace
+
 	return 255
 } # __STDLIB_API_1_std::readlink # }}}
 
@@ -1968,6 +2166,9 @@ function __STDLIB_API_1_std::readlink() { # {{{
 ###############################################################################
 
 function __STDLIB_API_1_std::inherit() { # {{{
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	local var item skip parent name
 	local -i exported=0
 	local -a val=() flags=()
@@ -1983,6 +2184,10 @@ function __STDLIB_API_1_std::inherit() { # {{{
 	# simply set, and the -x flag specifies that VARIABLE will be exported
 	# if it does not exist.
 	# Other than -e, the valid flags are those used by declare/typeset.
+	#
+	# The v2 definition of this function, below, extends std::inherit() to
+	# accept a list of key/value pairs rather than operating on only a
+	# single variable at once.
 
 	for item in "${@:-}"; do
 		if [[ "${item}" == '--' ]]; then
@@ -2002,6 +2207,9 @@ function __STDLIB_API_1_std::inherit() { # {{{
 
 	[[ -n "${var:-}" ]] || {
 		std_ERRNO=$( errsymbol EARGS )
+
+		(( std_x_state )) && set -o xtrace
+
 		return 1
 	}
 
@@ -2009,6 +2217,9 @@ function __STDLIB_API_1_std::inherit() { # {{{
 		error "${FUNCNAME[0]##*_} parameter-name '${var}' is not a valid variable-name"
 
 		std_ERRNO=$( errsymbol EARGS )
+
+		(( std_x_state )) && set -o xtrace
+
 		return 1
 	fi
 
@@ -2016,6 +2227,9 @@ function __STDLIB_API_1_std::inherit() { # {{{
 		name="${FUNCNAME[0]/__STDLIB_API_[0-9]_}"
 		[[ -n "${name:-}" ]] || {
 			std_ERRNO=$( errsymbol EENV )
+
+			(( std_x_state )) && set -o xtrace
+
 			return 1
 		}
 
@@ -2026,6 +2240,9 @@ function __STDLIB_API_1_std::inherit() { # {{{
 		output >&2 "${SHELL:-bash}: ${name:-std::inherit}: can only be used in a function"
 
 		std_ERRNO=$( errsymbol ESYNTAX )
+
+		(( std_x_state )) && set -o xtrace
+
 		return 1
 	fi
 
@@ -2036,6 +2253,9 @@ function __STDLIB_API_1_std::inherit() { # {{{
 	else
 		[[ -n "${val[*]:-}" ]] || {
 			std_ERRNO=$( errsymbol ENOTFOUND )
+
+			(( std_x_state )) && set -o xtrace
+
 			return 1
 		}
 
@@ -2043,10 +2263,16 @@ function __STDLIB_API_1_std::inherit() { # {{{
 	fi
 
 	std_ERRNO=0 # instead use 'std_ERRNO=$( errsymbol ENOERROR )'
+
+	(( std_x_state )) && set -o xtrace
+
 	return 0
 } # __STDLIB_API_1_std::inherit # }}}
 
 function __STDLIB_API_2_std::inherit() { # {{{
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	local item skip parent name value
 	local -i shouldexport=0 rc=0
 	local -a var=() flags=()
@@ -2054,7 +2280,7 @@ function __STDLIB_API_2_std::inherit() { # {{{
 
 	# Usage:
 	#
-	# eval std::inherit [-ex] [--] VARIABLE=VALUE [VAR2=VAL2 ...]
+	# eval std::inherit [-ex] [--] VARIABLE[=VALUE] [VAR2[=VAL2] ...]
 	#
 	# Explicitly indicates that the current function will make use of
 	# global variable VARIABLE, and initialise VARIABLE to contain the
@@ -2109,6 +2335,9 @@ function __STDLIB_API_2_std::inherit() { # {{{
 
 	[[ -n "${#var[@]:-}" ]] || {
 		std_ERRNO=$( errsymbol EARGS )
+
+		(( std_x_state )) && set -o xtrace
+
 		return 1
 	}
 
@@ -2116,6 +2345,9 @@ function __STDLIB_API_2_std::inherit() { # {{{
 		name="${FUNCNAME[0]/__STDLIB_API_[0-9]_}"
 		[[ -n "${name:-}" ]] || {
 			std_ERRNO=$( errsymbol EENV )
+
+			(( std_x_state )) && set -o xtrace
+
 			return 1
 		}
 
@@ -2126,6 +2358,9 @@ function __STDLIB_API_2_std::inherit() { # {{{
 		output >&2 "${SHELL:-bash}: ${name:-std::inherit}: can only be used in a function"
 
 		std_ERRNO=$( errsymbol ESYNTAX )
+
+		(( std_x_state )) && set -o xtrace
+
 		return 1
 	fi
 
@@ -2146,6 +2381,8 @@ function __STDLIB_API_2_std::inherit() { # {{{
 		fi
 	done
 
+	(( std_x_state )) && set -o xtrace
+
 	return ${rc}
 } # __STDLIB_API_2_std::inherit # }}}
 
@@ -2157,6 +2394,9 @@ function __STDLIB_API_2_std::inherit() { # {{{
 ###############################################################################
 
 function __STDLIB_API_1_std::define() { # {{{
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	# This is not the same variable previously declared to be an array...
 	# shellcheck disable=SC2178
 	local var="${1:-}" ; shift
@@ -2178,6 +2418,9 @@ function __STDLIB_API_1_std::define() { # {{{
 
 	[[ -n "${var:-}" ]] || {
 		std_ERRNO=$( errsymbol EARGS )
+
+		(( std_x_state )) && set -o xtrace
+
 		return 1
 	}
 
@@ -2200,8 +2443,14 @@ function __STDLIB_API_1_std::define() { # {{{
 
 	if [[ -z "${var:-}" ]]; then
 		# Don't change std_ERRNO
+
+		(( std_x_state )) && set -o xtrace
+
 		return 1
 	fi
+
+	(( std_x_state )) && set -o xtrace
+
 	return 0
 } # __STDLIB_API_1_std::define # }}}
 
@@ -2213,6 +2462,9 @@ function __STDLIB_API_1_std::define() { # {{{
 ###############################################################################
 
 function __STDLIB_API_1_std::formatlist() { # {{{
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	local item
 
 	if [[ -n "${3:-}" ]]; then
@@ -2229,6 +2481,9 @@ function __STDLIB_API_1_std::formatlist() { # {{{
 	fi
 
 	std_ERRNO=0 # instead use 'std_ERRNO=$( errsymbol ENOERROR )'
+
+	(( std_x_state )) && set -o xtrace
+
 	return 0
 } # __STDLIB_API_1_std::formatlist # }}}
 
@@ -2240,17 +2495,26 @@ function __STDLIB_API_1_std::formatlist() { # {{{
 ###############################################################################
 
 function __STDLIB_API_1_std::vcmp() { # {{{
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	local vone op vtwo list
 
 	# Does system 'sort' have version-sort capability (again, CentOS/Red
 	# Hat seem to lose out here...)
 	sort --version-sort </dev/null || {
 		std_ERRNO=$( errsymbol ENOEXE )
+
+		(( std_x_state )) && set -o xtrace
+
 		return 1
 	}
 
 	if ! (( 3 == ${#} )); then
 		std_ERRNO=$( errsymbol EARGS )
+
+		(( std_x_state )) && set -o xtrace
+
 		return 1
 	fi
 
@@ -2263,36 +2527,52 @@ function __STDLIB_API_1_std::vcmp() { # {{{
 	case "${op:-}" in
 		'<'|lt|-lt)
 			if [[ "${vone}" != "${vtwo}" && "$( echo -e "${vone}\n${vtwo}" | sort -V 2>/dev/null | head -n 1 )" == "${vone}" ]]; then
+				(( std_x_state )) && set -o xtrace
+
 				# vone < vtwo
 				return 0
 			else
+				(( std_x_state )) && set -o xtrace
+
 				# vone !< vtwo
 				return 1
 			fi
 			;;
 		'<='|le|-le)
 			if [[ "${vone}" == "${vtwo}" || "$( echo -e "${vone}\n${vtwo}" | sort -V 2>/dev/null | head -n 1 )" == "${vone}" ]]; then
+				(( std_x_state )) && set -o xtrace
+
 				# vone <= vtwo
 				return 0
 			else
+				(( std_x_state )) && set -o xtrace
+
 				# vone > vtwo
 				return 1
 			fi
 			;;
 		'>'|gt|-gt)
 			if [[ "${vone}" != "${vtwo}" && "$( echo -e "${vone}\n${vtwo}" | sort -V 2>/dev/null | tail -n +2 )" == "${vone}" ]]; then
+				(( std_x_state )) && set -o xtrace
+
 				# vone > vtwo
 				return 0
 			else
+				(( std_x_state )) && set -o xtrace
+
 				# vone !> vtwo
 				return 1
 			fi
 			;;
 		'>='|ge|-ge)
 			if [[ "${vone}" == "${vtwo}" || "$( echo -e "${vone}\n${vtwo}" | sort -V 2>/dev/null | tail -n +2 )" == "${vone}" ]]; then
+				(( std_x_state )) && set -o xtrace
+
 				# vone >= vtwo
 				return 0
 			else
+				(( std_x_state )) && set -o xtrace
+
 				# vone < vtwo
 				return 1
 			fi
@@ -2305,12 +2585,23 @@ function __STDLIB_API_1_std::vcmp() { # {{{
 				done | sort -V 2>/dev/null
 			)"
 			respond "${list}"
-			[[ "$( echo "${list}" | xargs echo )" == "$( echo "${*:-}" | xargs echo )" ]] && return 0 || return 1
+			if [[ "$( echo "${list}" | xargs echo )" == "$( echo "${*:-}" | xargs echo )" ]]; then
+				(( std_x_state )) && set -o xtrace
+
+				return 0
+			else
+				(( std_x_state )) && set -o xtrace
+
+				return 1
+			fi
 			;;
 	esac
 
 	# Unreachable
 	std_ERRNO=$( errsymbol EERROR )
+
+	(( std_x_state )) && set -o xtrace
+
 	return 255
 } # __STDLIB_API_1_std::vcmp # }}}
 
@@ -2322,6 +2613,9 @@ function __STDLIB_API_1_std::vcmp() { # {{{
 ###############################################################################
 
 function __STDLIB_API_1_std::requires() { # {{{
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	local item location
 	local -i shouldexit=1 quiet=1 path=0 rc=0
 	local -a files=()
@@ -2344,6 +2638,9 @@ function __STDLIB_API_1_std::requires() { # {{{
 
 	if ! (( ${#files[@]} )); then
 		std_ERRNO=3 # instead use 'std_ERRNO=$( errsymbol EARGS )'
+
+		(( std_x_state )) && set -o xtrace
+
 		return 1
 	fi
 
@@ -2365,6 +2662,8 @@ function __STDLIB_API_1_std::requires() { # {{{
 
 	(( shouldexit )) && (( rc )) && __STDLIB_API_1_std::cleanup 1
 
+	(( std_x_state )) && set -o xtrace
+
 	# std_ERRNO set above
 	return ${rc}
 } # __STDLIB_API_1_std::requires # }}}
@@ -2379,6 +2678,9 @@ __STDLIB_API_1_std::requires --no-quiet --no-abort basename cat cut dirname grep
 ###############################################################################
 
 function __STDLIB_API_1_std::capture() { # {{{
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	local stream="${1:-}" ; shift
 	local cmd="${1:-}" ; shift
 	local args=( "${@:-}" )
@@ -2406,6 +2708,9 @@ function __STDLIB_API_1_std::capture() { # {{{
 				"<stream> <command> [arguments]', received" \
 				"'<${stream:-}> <${cmd:-}> [${args[*]}]'"
 			std_ERRNO=$( errsymbol EARGS )
+
+			(( std_x_state )) && set -o xtrace
+
 			return 1
 			;;
 	esac
@@ -2413,6 +2718,9 @@ function __STDLIB_API_1_std::capture() { # {{{
 	if ! type -t "${cmd:-}" >/dev/null; then
 		error "Invalid parameters: <command> '${cmd:-}' not found"
 		std_ERRNO=$( errsymbol EARGS )
+
+		(( std_x_state )) && set -o xtrace
+
 		return 1
 	fi
 
@@ -2422,10 +2730,16 @@ function __STDLIB_API_1_std::capture() { # {{{
 	output "${response:-}"
 
 	std_ERRNO=0 # instead use 'std_ERRNO=$( errsymbol ENOERROR )'
+
+	(( std_x_state )) && set -o xtrace
+
 	return ${rc}
 } # __STDLIB_API_1_std::capture # }}}
 
 function __STDLIB_API_1_std::ensure() { # {{{
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	local err="${1:-}" ; shift
 	local cmd="${1:-}" ; shift
 	local args=( "${@:-}" )
@@ -2440,6 +2754,9 @@ function __STDLIB_API_1_std::ensure() { # {{{
 		error "Invalid parameters: <command> '${cmd:-}' not found"
 
 		std_ERRNO=$( errsymbol EARGS )
+
+		(( std_x_state )) && set -o xtrace
+
 		return 1
 	fi
 
@@ -2448,6 +2765,8 @@ function __STDLIB_API_1_std::ensure() { # {{{
 	if (( !( rc ) )); then
 		# Succeeded
 		[[ -z "${err:-}" ]] && output "${response:-}"
+
+		(( std_x_state )) && set -o xtrace
 
 		# Don't stomp on std_ERRNO
 		return ${rc}
@@ -2459,18 +2778,29 @@ function __STDLIB_API_1_std::ensure() { # {{{
 
 	# Unreachable
 	std_ERRNO=$( errsymbol EERROR )
+
+	(( std_x_state )) && set -o xtrace
+
 	return 255
 } # __STDLIB_API_1_std::ensure # }}}
 
 function __STDLIB_API_1_std::silence() { # {{{
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	[[ -n "${1:-}" ]] || {
 		std_ERRNO=$( errsymbol EARGS )
+
+		(( std_x_state )) && set -o xtrace
+
 		return 1
 	}
 
 	std_ERRNO=0 # instead use 'std_ERRNO=$( errsymbol ENOERROR )'
 
 	__STDLIB_API_1_std::capture all "${@:-}" >/dev/null
+
+	(( std_x_state )) && set -o xtrace
 
 	# Don't stomp on std_ERRNO
 	return ${?}
@@ -2484,11 +2814,17 @@ function __STDLIB_API_1_std::silence() { # {{{
 ###############################################################################
 
 function __STDLIB_API_1_std::wordsplit() { # {{{
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	local -a string="${*:-}" words
 	local word
 
 	[[ -n "${string:-}" ]] || {
 		std_ERRNO=$( errsymbol EARGS )
+
+		(( std_x_state )) && set -o xtrace
+
 		return 1
 	}
 
@@ -2498,6 +2834,9 @@ function __STDLIB_API_1_std::wordsplit() { # {{{
 	done
 
 	std_ERRNO=0 # instead use 'std_ERRNO=$( errsymbol ENOERROR )'
+
+	(( std_x_state )) && set -o xtrace
+
 	return 0
 } # __STDLIB_API_1_std::wordsplit # }}}
 
@@ -2510,6 +2849,9 @@ function __STDLIB_API_1_std::wordsplit() { # {{{
 ###############################################################################
 
 function __STDLIB_API_1_std::findfile() { # {{{
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	local file
 	local -a app=() name=() dir=() default=() paths=() files=()
 
@@ -2537,6 +2879,9 @@ function __STDLIB_API_1_std::findfile() { # {{{
 		error "${FUNCNAME[0]##*_} requires at least one filename argument"
 
 		std_ERRNO=$( errsymbol EARGS )
+
+		(( std_x_state )) && set -o xtrace
+
 		return 1
 	}
 
@@ -2606,11 +2951,17 @@ function __STDLIB_API_1_std::findfile() { # {{{
 			respond "${file}"
 
 			std_ERRNO=0 # instead use 'std_ERRNO=$( errsymbol ENOERROR )'
+
+			(( std_x_state )) && set -o xtrace
+
 			return 0
 		fi
 	done
 
 	std_ERRNO=$( errsymbol ENOTFOUND )
+
+	(( std_x_state )) && set -o xtrace
+
 	return 1
 } # __STDLIB_API_1_std::findfile # }}}
 
@@ -2622,20 +2973,32 @@ function __STDLIB_API_1_std::findfile() { # {{{
 ###############################################################################
 
 function __STDLIB_API_1_std::getfilesection() { # {{{
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	local file="${1:-}" ; shift
 	local section="${1:-}" ; shift
 	local script
 
 	[[ -n "${file:-}" ]] || {
 		std_ERRNO=$( errsymbol EARGS )
+
+		(( std_x_state )) && set -o xtrace
+
 		return 1
 	}
 	[[ -s "${file}" || -p "${file}" ]] || {
 		std_ERRNO=$( errsymbol ENOTFOUND )
+
+		(( std_x_state )) && set -o xtrace
+
 		return 1
 	}
 	[[ -n "${section:-}" ]] || {
 		std_ERRNO=$( errsymbol EENV )
+
+		(( std_x_state )) && set -o xtrace
+
 		return 1
 	}
 
@@ -2657,6 +3020,9 @@ function __STDLIB_API_1_std::getfilesection() { # {{{
 	respond "$( awk -- "${script:-}" "${file}" )"
 
 	std_ERRNO=0 # instead use 'std_ERRNO=$( errsymbol ENOERROR )'
+
+	(( std_x_state )) && set -o xtrace
+
 	return ${?}
 } # __STDLIB_API_1_std::getfilesection # }}}
 
@@ -2668,6 +3034,9 @@ function __STDLIB_API_1_std::getfilesection() { # {{{
 ###############################################################################
 
 function  __STDLIB_API_1_std::http::squash() { # {{{
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	local -i code=${1:-} ; shift
 	local -i result=0
 
@@ -2695,11 +3064,16 @@ function  __STDLIB_API_1_std::http::squash() { # {{{
 
 	debug "${FUNCNAME[0]##*_} returned shell code ${result}"
 
+	(( std_x_state )) && set -o xtrace
+
 	# Don't stomp on std_ERRNO
 	return ${result}
 } # __STDLIB_API_1_std::http::squash # }}}
 
 function __STDLIB_API_1_std::http::expand() { # {{{
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	local -i code=${1:-} ; shift
 	local -i result=0
 	local -i rc=0
@@ -2739,6 +3113,8 @@ function __STDLIB_API_1_std::http::expand() { # {{{
 		respond ${result}
 	fi
 
+	(( std_x_state )) && set -o xtrace
+
 	# Don't stomp on std_ERRNO
 	return ${rc}
 } # __STDLIB_API_1_std::http::expand # }}}
@@ -2751,6 +3127,9 @@ function __STDLIB_API_1_std::http::expand() { # {{{
 ###############################################################################
 
 function __STDLIB_API_1_std::parseargs() { # {{{
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	local std_PARSEARGS_current="" std_PARSEARGS_arg=""
 	local -i std_PARSEARGS_onevalue=0 std_PARSEARGS_unrecok=0 std_PARSEARGS_rc=1
 
@@ -2766,6 +3145,9 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 			(( std_PARSEARGS_rc )) || [[ "${std_PARSEARGS_arg:-}" =~ ^- ]] || respond "${std_PARSEARGS_arg:-}"
 			[[ "${std_PARSEARGS_arg:-}" == '--' ]] && std_PARSEARGS_rc=0
 		done
+
+		(( std_x_state )) && set -o xtrace
+
 		return 0
 	fi
 
@@ -2842,6 +3224,9 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 							respond "std_PARSEARGS_parsed=${std_PARSEARGS_parsed:-0}"
 
 							std_ERRNO=$( errsymbol EARGS )
+
+							(( std_x_state )) && set -o xtrace
+
 							return 1
 						fi
 					else
@@ -2850,6 +3235,9 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 						respond "std_PARSEARGS_parsed=${std_PARSEARGS_parsed:-0}"
 
 						std_ERRNO=$( errsymbol EARGS )
+
+						(( std_x_state )) && set -o xtrace
+
 						return 1
 					fi
 					;;
@@ -2862,6 +3250,9 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 					respond "std_PARSEARGS_parsed=${std_PARSEARGS_parsed:-0}"
 
 					std_ERRNO=$( errsymbol EARGS )
+
+					(( std_x_state )) && set -o xtrace
+
 					return 1
 					;;
 			esac
@@ -2899,6 +3290,9 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 				respond "std_PARSEARGS_parsed=${std_PARSEARGS_parsed:-0}"
 
 				std_ERRNO=$( errsymbol EARGS )
+
+				(( std_x_state )) && set -o xtrace
+
 				return 1
 			elif [[ "${std_PARSEARGS_arg}" =~ ^std_(PARSEARGS_.+|ERRNO)$ ]]; then
 				(( std_DEBUG )) && error "${FUNCNAME[0]##*_}: Provided name '${std_PARSEARGS_arg}' is a reserved variable-name"
@@ -2906,6 +3300,9 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 				respond "std_PARSEARGS_parsed=${std_PARSEARGS_parsed:-0}"
 
 				std_ERRNO=$( errsymbol EARGS )
+
+				(( std_x_state )) && set -o xtrace
+
 				return 1
 			else
 				declare -p "${std_PARSEARGS_arg}" >/dev/null 2>&1 || declare -a "${std_PARSEARGS_arg}"
@@ -2953,6 +3350,8 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 
 	(( std_PARSEARGS_rc )) && std_ERRNO=$( errsymbol EARGS )
 
+	(( std_x_state )) && set -o xtrace
+
 	return ${std_PARSEARGS_rc}
 } # __STDLIB_API_1_std::parseargs # }}}
 
@@ -2964,6 +3363,9 @@ function __STDLIB_API_1_std::parseargs() { # {{{
 ###############################################################################
 
 function __STDLIB_API_1_std::configure() { # {{{
+	local -i std_x_state=0
+	! (( std_DEBUG & 2 )) && [[ "${-/x}" != "${-}" ]] && set +o xtrace && std_x_state=1
+
 	local -a prefix=() exec_prefix=() bindir=() sbindir=() libexecdir=() sysconfdir=()
 	local -a sharedstatedir=() localstatedir=() runstatedir=() libdir=() includedir=()
 	local -a oldincludedir=() datarootdir=() datadir=() infodir=() localedir=() mandir=() docdir=()
@@ -3035,10 +3437,16 @@ function __STDLIB_API_1_std::configure() { # {{{
 
 	if [[ -d "${PREFIX:-}/" && -d "${EXEC_PREFIX:-}/" ]]; then
 		std_ERRNO=0 # instead use 'std_ERRNO=$( errsymbol ENOERROR )'
+
+		(( std_x_state )) && set -o xtrace
+
 		return 0
 	fi
 
 	std_ERRNO=$( errsymbol ENOTFOUND )
+
+	(( std_x_state )) && set -o xtrace
+
 	return 1
 } # __STDLIB_API_1_std::configure() # }}}
 
