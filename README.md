@@ -25,6 +25,11 @@ Invoking a script which employs `stdlib.sh` with the `DEBUG` environment
 variable set may produce additional diagnostic output.  Explicitly setting
 `DEBUG=2` will additionally output `stdlib.sh` internal diagnostic information.
 
+A `template.sh` file is now provided with all of the necessary components
+needed to use `stdlib.sh`already included, making getting started much simpler
+and quicker.  The suggested configuration is to edit with `vi` or `vim` with
+`set modeline` in `~/.vimrc`, to allow for code-folding and so easier editing.
+
 Coding Standards
 ================
 
@@ -56,7 +61,7 @@ declarations are:
 
 * `local -a` : Define an array variable;
 
-* `local -A` : Defined an associative array;
+* `local -A` : Define an associative array;
 
 For top-level global values outside of functions, `declare` can be used in
 place of `local`.  Top-level variables must stil be `export`ed in order to be
@@ -136,12 +141,14 @@ Configuration Files
 ===================
 
 The example file `stdlib-colour.map` may be copied to `/etc/stdlib/colour.map`
-or `/etc/stdlib.colour.map`, or similar locations beneath `/usr/local/etc` - or
-even `~/.stdlib/colour.map` or `~/.stdlib.colour.map`, or an alternate location
-may be specified by setting the environment variable `STDLIB_COLOUR_MAP` to the
-full path to the map file.  `stdlib-colour.map` documents the available colour
-options.
+or `/etc/stdlib.colour.map` (or similar locations beneath `/usr/local/etc`, or
+even `~/.stdlib/colour.map` or `~/.stdlib.colour.map` - see `std::findfile()`
+for details of how this flexibility can easily be achieved in your own scripts),
+or an alternate location may be specified by setting the environment variable
+`STDLIB_COLOUR_MAP` to the full path to the map file.  `stdlib-colour.map`
+documents the available colour options.
 
 The colour mappings from `stdlib-colour.map` are used when `stdlib.sh` is
-sourced with the environment variable `STDLIB_WANT_COLOUR` set - for
+sourced with the environment variable `STDLIB_WANT_COLOUR` set - for backwards-
 compatibility, colourised output is disabled by default.
+

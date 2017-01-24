@@ -1,7 +1,7 @@
 #!/bin/bash
 
+# Copyright 2013-2017 Stuart Shelton
 # Portions Copyright 2016 Daniele Borsaro
-# Portions Copyright 2013-2016 Stuart Shelton
 # Distributed under the terms of the GNU General Public License v2
 #
 # test.sh - Basic functionality checks for stdlib.sh

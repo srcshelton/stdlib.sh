@@ -1,6 +1,6 @@
 #! /usr/bin/env bash
 #
-# Copyright 2013-2016 Stuart Shelton
+# Copyright 2013-2017 Stuart Shelton
 # Distributed under the terms of the GNU General Public License v2
 #
 # stdlib.sh standardised shared shell functions...
@@ -73,7 +73,7 @@ EOC
 if [[ "${std_RELEASE:-1.3}" == "1.3" ]] || std::vcmp "${std_RELEASE}" -lt "2.0.0"; then
 	die "stdlib is too old - please update '${std_LIBPATH}/${std_LIB}' to at least v2.0.0" # for API 2
 elif std::vcmp "${std_RELEASE}" -lt "2.0.4"; then
-        warn "stdlib is outdated - please update '${std_LIBPATH}/${std_LIB}' to at least v2.0.4" # for std_LASTOUTPUT
+	warn "stdlib is outdated - please update '${std_LIBPATH}/${std_LIB}' to at least v2.0.4" # for std_LASTOUTPUT
 fi
 
 # --- CUT HERE ---
